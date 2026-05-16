@@ -6,6 +6,10 @@ use crate::{
     parse_excalidraw_color, BaseElement, Color, Element, ExcalidrawFile, LinearElement, TextElement,
 };
 
+const FRACTIONAL_INDEX_DIGITS: &str =
+    "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const MIN_FRACTIONAL_INDEX: &str = "A00000000000000000000000000";
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
     pub x: f64,
@@ -119,6 +123,14 @@ pub struct NormalizedElement {
 pub enum SceneWarning {
     MissingElementId { original_order: usize },
     InvalidBackgroundColor { value: String },
+    ZOrderFallback { reason: ZOrderFallbackReason },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ZOrderFallbackReason {
+    MissingIndex { element_id: String },
+    InvalidIndex { element_id: String, value: String },
+    DuplicateIndex { value: String },
 }
 
 pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
@@ -143,7 +155,6 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
     };
 
     let mut elements = Vec::new();
-    let mut id_map = HashMap::new();
     let mut frame_children: HashMap<String, Vec<String>> = HashMap::new();
     let mut bound_texts: HashMap<String, Vec<String>> = HashMap::new();
     let mut bound_arrows: HashMap<String, Vec<String>> = HashMap::new();
@@ -170,10 +181,6 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
             content_bounds.union(bounds)
         };
 
-        let normalized_index = elements.len();
-        if !base.id.is_empty() {
-            id_map.insert(base.id.clone(), normalized_index);
-        }
         if let Some(frame_id) = &base.frame_id {
             frame_children
                 .entry(frame_id.clone())
@@ -192,7 +199,7 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
         elements.push(NormalizedElement {
             element: element.clone(),
             original_order,
-            render_order: normalized_index,
+            render_order: elements.len(),
             abs_points,
             bounds,
             rotated_bounds: bounds,
@@ -200,6 +207,9 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
             frame_id: base.frame_id.clone(),
         });
     }
+
+    apply_z_order(&mut elements, &mut warnings);
+    let id_map = build_id_map(&elements);
 
     Scene {
         export_bounds: content_bounds.padded(16.0),
@@ -218,6 +228,112 @@ impl ExcalidrawFile {
     #[must_use]
     pub fn normalize(&self) -> Scene {
         normalize_file(self)
+    }
+}
+
+fn build_id_map(elements: &[NormalizedElement]) -> HashMap<String, usize> {
+    let mut id_map = HashMap::new();
+    for (index, element) in elements.iter().enumerate() {
+        let Some(base) = element_base(&element.element) else {
+            continue;
+        };
+        if !base.id.is_empty() {
+            id_map.insert(base.id.clone(), index);
+        }
+    }
+    id_map
+}
+
+fn apply_z_order(elements: &mut [NormalizedElement], warnings: &mut Vec<SceneWarning>) {
+    let any_index = elements
+        .iter()
+        .filter_map(|element| element_base(&element.element))
+        .any(|base| base.index.is_some());
+    if !any_index {
+        apply_original_order(elements);
+        return;
+    }
+
+    let mut seen = std::collections::HashSet::new();
+
+    for element in elements.iter() {
+        let Some(base) = element_base(&element.element) else {
+            continue;
+        };
+        let Some(index) = &base.index else {
+            warnings.push(SceneWarning::ZOrderFallback {
+                reason: ZOrderFallbackReason::MissingIndex {
+                    element_id: base.id.clone(),
+                },
+            });
+            apply_original_order(elements);
+            return;
+        };
+        if !is_valid_fractional_index(index) {
+            warnings.push(SceneWarning::ZOrderFallback {
+                reason: ZOrderFallbackReason::InvalidIndex {
+                    element_id: base.id.clone(),
+                    value: index.clone(),
+                },
+            });
+            apply_original_order(elements);
+            return;
+        }
+        if !seen.insert(index.as_str()) {
+            warnings.push(SceneWarning::ZOrderFallback {
+                reason: ZOrderFallbackReason::DuplicateIndex {
+                    value: index.clone(),
+                },
+            });
+            apply_original_order(elements);
+            return;
+        }
+    }
+
+    elements.sort_by(|left, right| {
+        let left_index = element_base(&left.element).and_then(|base| base.index.as_deref());
+        let right_index = element_base(&right.element).and_then(|base| base.index.as_deref());
+        left_index
+            .cmp(&right_index)
+            .then(left.original_order.cmp(&right.original_order))
+    });
+    apply_render_order(elements);
+}
+
+fn apply_original_order(elements: &mut [NormalizedElement]) {
+    elements.sort_by_key(|element| element.original_order);
+    apply_render_order(elements);
+}
+
+fn apply_render_order(elements: &mut [NormalizedElement]) {
+    for (render_order, element) in elements.iter_mut().enumerate() {
+        element.render_order = render_order;
+    }
+}
+
+fn is_valid_fractional_index(index: &str) -> bool {
+    let Some(integer_part_length) = fractional_index_integer_length(index) else {
+        return false;
+    };
+    if integer_part_length > index.len()
+        || index == MIN_FRACTIONAL_INDEX
+        || !index
+            .bytes()
+            .all(|byte| FRACTIONAL_INDEX_DIGITS.as_bytes().contains(&byte))
+    {
+        return false;
+    }
+    let Some(fractional_part) = index.get(integer_part_length..) else {
+        return false;
+    };
+    !fractional_part.ends_with('0')
+}
+
+fn fractional_index_integer_length(index: &str) -> Option<usize> {
+    match *index.as_bytes().first()? {
+        head @ b'a'..=b'z' => Some(usize::from(head - b'a' + 2)),
+        head @ b'A'..=b'Z' => Some(usize::from(b'Z' - head + 2)),
+        _ => None,
     }
 }
 
@@ -310,7 +426,9 @@ fn element_bounds(element: &Element, abs_points: Option<&[Point]>) -> Rect {
 mod tests {
     use std::error::Error;
 
-    use crate::{normalize_file, parse_str, Color, Point, Rect, SceneWarning};
+    use crate::{
+        normalize_file, parse_str, Color, Point, Rect, SceneWarning, ZOrderFallbackReason,
+    };
 
     #[test]
     fn filters_deleted_elements_and_preserves_order() -> Result<(), Box<dyn Error>> {
@@ -441,6 +559,140 @@ mod tests {
         )
     }
 
+    #[test]
+    fn uses_fractional_indexes_when_all_visible_indexes_are_valid() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements": [
+                    {"type":"rectangle","id":"last","index":"a2"},
+                    {"type":"rectangle","id":"first","index":"a0"},
+                    {"type":"rectangle","id":"middle","index":"a1"}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+
+        ensure_eq(
+            &ordered_ids(&scene),
+            vec!["first", "middle", "last"],
+            "z-order",
+        )?;
+        let [first, middle, last] = scene.elements.as_slice() else {
+            return Err("expected three normalized elements".into());
+        };
+        ensure_eq(&first.original_order, 1_usize, "first original order")?;
+        ensure_eq(&middle.original_order, 2_usize, "middle original order")?;
+        ensure_eq(&last.original_order, 0_usize, "last original order")?;
+        ensure_eq(&scene.id_map.get("first"), Some(&0_usize), "id map first")?;
+        ensure_eq(&scene.id_map.get("last"), Some(&2_usize), "id map last")
+    }
+
+    #[test]
+    fn orders_common_excalidraw_fractional_index_shapes() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements": [
+                    {"type":"rectangle","id":"after-a0","index":"a01"},
+                    {"type":"rectangle","id":"first-positive","index":"a0"},
+                    {"type":"rectangle","id":"negative","index":"Zz"},
+                    {"type":"rectangle","id":"next-positive","index":"a1"}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+
+        ensure_eq(
+            &ordered_ids(&scene),
+            vec!["negative", "first-positive", "after-a0", "next-positive"],
+            "fractional index order",
+        )
+    }
+
+    #[test]
+    fn falls_back_to_original_order_when_indexes_are_missing_or_invalid(
+    ) -> Result<(), Box<dyn Error>> {
+        let missing = parse_str(
+            r##"{
+                "elements": [
+                    {"type":"rectangle","id":"a","index":"a0"},
+                    {"type":"rectangle","id":"b"}
+                ]
+            }"##,
+        )?;
+        let missing_scene = normalize_file(&missing);
+        ensure_eq(
+            &ordered_ids(&missing_scene),
+            vec!["a", "b"],
+            "missing fallback order",
+        )?;
+        ensure_eq(
+            &missing_scene.warnings.as_slice(),
+            [SceneWarning::ZOrderFallback {
+                reason: ZOrderFallbackReason::MissingIndex {
+                    element_id: "b".to_owned(),
+                },
+            }]
+            .as_slice(),
+            "missing fallback warning",
+        )?;
+
+        let invalid = parse_str(
+            r##"{
+                "elements": [
+                    {"type":"rectangle","id":"a","index":"a0"},
+                    {"type":"rectangle","id":"b","index":"a10"}
+                ]
+            }"##,
+        )?;
+        let invalid_scene = normalize_file(&invalid);
+        ensure_eq(
+            &ordered_ids(&invalid_scene),
+            vec!["a", "b"],
+            "invalid fallback order",
+        )?;
+        ensure_eq(
+            &invalid_scene.warnings.as_slice(),
+            [SceneWarning::ZOrderFallback {
+                reason: ZOrderFallbackReason::InvalidIndex {
+                    element_id: "b".to_owned(),
+                    value: "a10".to_owned(),
+                },
+            }]
+            .as_slice(),
+            "invalid fallback warning",
+        )
+    }
+
+    #[test]
+    fn falls_back_to_original_order_when_fractional_indexes_are_duplicated(
+    ) -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements": [
+                    {"type":"rectangle","id":"a","index":"a0"},
+                    {"type":"rectangle","id":"b","index":"a0"}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+
+        ensure_eq(
+            &ordered_ids(&scene),
+            vec!["a", "b"],
+            "duplicate fallback order",
+        )?;
+        ensure_eq(
+            &scene.warnings.as_slice(),
+            [SceneWarning::ZOrderFallback {
+                reason: ZOrderFallbackReason::DuplicateIndex {
+                    value: "a0".to_owned(),
+                },
+            }]
+            .as_slice(),
+            "duplicate fallback warning",
+        )
+    }
+
     fn ensure_eq<T, U>(actual: &T, expected: U, label: &str) -> Result<(), Box<dyn Error>>
     where
         T: PartialEq<U> + std::fmt::Debug,
@@ -459,5 +711,14 @@ mod tests {
     ) -> Option<Vec<&'a str>> {
         map.get(key)
             .map(|values| values.iter().map(String::as_str).collect())
+    }
+
+    fn ordered_ids(scene: &crate::Scene) -> Vec<&str> {
+        scene
+            .elements
+            .iter()
+            .filter_map(|element| super::element_base(&element.element))
+            .map(|base| base.id.as_str())
+            .collect()
     }
 }
