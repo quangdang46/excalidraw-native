@@ -1,0 +1,59 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "synthetic",
+  "elements": [
+    {
+      "type": "rectangle",
+      "id": "r1",
+      "x": 10,
+      "y": 30,
+      "width": 80,
+      "height": 50,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "seed": 30
+    },
+    {
+      "type": "rectangle",
+      "id": "r2",
+      "x": 150,
+      "y": 30,
+      "width": 80,
+      "height": 50,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "seed": 31
+    },
+    {
+      "type": "arrow",
+      "id": "arr1",
+      "x": 90,
+      "y": 55,
+      "width": 60,
+      "height": 0,
+      "points": [[0,0],[60,0]],
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "seed": 32,
+      "startArrowhead": null,
+      "endArrowhead": "arrow"
+    }
+  ],
+  "appState": {}
+}

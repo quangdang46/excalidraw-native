@@ -1,0 +1,46 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "synthetic",
+  "elements": [
+    {
+      "type": "freedraw",
+      "id": "fd1",
+      "x": 10,
+      "y": 10,
+      "width": 120,
+      "height": 60,
+      "points": [[0,0],[10,5],[30,0],[50,10],[70,5],[90,15],[110,10],[120,5]],
+      "pressures": [0.2,0.4,0.6,0.8,0.7,0.5,0.3,0.1],
+      "simulatePressure": true,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 50
+    },
+    {
+      "type": "freedraw",
+      "id": "fd2",
+      "x": 10,
+      "y": 90,
+      "width": 80,
+      "height": 40,
+      "points": [[0,0],[5,10],[15,30],[25,35],[40,30],[55,20],[65,10],[80,0]],
+      "pressures": [0.8,0.7,0.6,0.5,0.4,0.3,0.2,0.1],
+      "simulatePressure": false,
+      "strokeColor": "#e03131",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 3,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 51
+    }
+  ],
+  "appState": {}
+}

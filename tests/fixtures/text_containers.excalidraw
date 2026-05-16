@@ -1,0 +1,48 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "synthetic",
+  "elements": [
+    {
+      "type": "rectangle",
+      "id": "box1",
+      "x": 10,
+      "y": 10,
+      "width": 150,
+      "height": 80,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 2,
+      "strokeStyle": "solid",
+      "roughness": 1,
+      "opacity": 100,
+      "seed": 20,
+      "boundElements": [{"id": "txt_box1", "type": "text"}]
+    },
+    {
+      "type": "text",
+      "id": "txt_box1",
+      "x": 18,
+      "y": 18,
+      "width": 134,
+      "height": 64,
+      "text": "Inside rectangle",
+      "originalText": "Inside rectangle",
+      "containerId": "box1",
+      "fontSize": 16,
+      "fontFamily": 1,
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 21
+    }
+  ],
+  "appState": {}
+}

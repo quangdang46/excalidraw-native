@@ -2366,6 +2366,57 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn all_fixtures_parse_normalize_and_render() -> Result<(), Box<dyn Error>> {
+        let fixtures = [
+            ("simple_shapes", 3),
+            ("text_standalone", 2),
+            ("text_containers", 2),
+            ("arrows_basic", 3),
+            ("arrows_bound", 4),
+            ("freedraw", 2),
+            ("image_embed", 3),
+            ("frame_clip", 4),
+            ("unsupported", 3),
+            ("complex_diagram", 8),
+            ("large_200_elements", 200),
+        ];
+        for (name, expected_count) in fixtures {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .parent()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("tests/fixtures")
+                .join(format!("{name}.excalidraw"));
+            let raw = std::fs::read_to_string(&path).map_err(|e| format!("fixture {name}: {e}"))?;
+            let file = parse_str(&raw)
+                .map_err(|e: excalidraw_core::ParseError| format!("parse {name}: {e}"))?;
+            ensure_eq(
+                &file.elements.len(),
+                expected_count,
+                &format!("{name} element count"),
+            )?;
+            let scene = normalize_file(&file);
+            ensure(
+                scene.elements.len() == expected_count,
+                &format!(
+                    "{name}: expected {expected_count} normalized elements, got {}",
+                    scene.elements.len()
+                ),
+            )?;
+            let output = render_svg(&scene, &RenderOptions::default())
+                .map_err(|e| format!("render {name}: {e}"))?;
+            ensure(
+                output.value.contains("<svg"),
+                &format!("{name}: missing svg root"),
+            )?;
+            usvg::Tree::from_str(&output.value, &usvg::Options::default())
+                .map_err(|e| format!("{name} usvg: {e}"))?;
+        }
+        Ok(())
+    }
+
     fn ensure(value: bool, label: &str) -> Result<(), Box<dyn Error>> {
         if value {
             Ok(())

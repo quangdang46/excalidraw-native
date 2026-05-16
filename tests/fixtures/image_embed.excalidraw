@@ -1,0 +1,70 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "synthetic",
+  "elements": [
+    {
+      "type": "image",
+      "id": "img1",
+      "x": 10,
+      "y": 10,
+      "width": 100,
+      "height": 80,
+      "fileId": "tiny_png",
+      "status": "saved",
+      "strokeColor": "transparent",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 0,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 60
+    },
+    {
+      "type": "image",
+      "id": "img2",
+      "x": 130,
+      "y": 10,
+      "width": 80,
+      "height": 60,
+      "fileId": "missing_file",
+      "status": "saved",
+      "strokeColor": "transparent",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 0,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 61
+    },
+    {
+      "type": "image",
+      "id": "img3",
+      "x": 10,
+      "y": 110,
+      "width": 60,
+      "height": 60,
+      "fileId": "tiny_png",
+      "status": "saved",
+      "scale": [-1, 1],
+      "strokeColor": "transparent",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 0,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 62
+    }
+  ],
+  "appState": {},
+  "files": {
+    "tiny_png": {
+      "id": "tiny_png",
+      "mimeType": "image/png",
+      "dataURL": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    }
+  }
+}

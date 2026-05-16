@@ -1,0 +1,49 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "synthetic",
+  "elements": [
+    {
+      "type": "embeddable",
+      "id": "emb1",
+      "x": 10,
+      "y": 10,
+      "width": 200,
+      "height": 150,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 80
+    },
+    {
+      "type": "iframe",
+      "id": "ifr1",
+      "x": 230,
+      "y": 10,
+      "width": 200,
+      "height": 150,
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 81
+    },
+    {
+      "type": "customWidget",
+      "id": "unk1",
+      "x": 10,
+      "y": 180,
+      "width": 100,
+      "height": 80,
+      "someField": "value"
+    }
+  ],
+  "appState": {}
+}

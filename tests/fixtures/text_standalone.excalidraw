@@ -1,0 +1,52 @@
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "synthetic",
+  "elements": [
+    {
+      "type": "text",
+      "id": "txt1",
+      "x": 10,
+      "y": 10,
+      "width": 200,
+      "height": 25,
+      "text": "Hello World",
+      "originalText": "Hello World",
+      "fontSize": 20,
+      "fontFamily": 1,
+      "textAlign": "left",
+      "verticalAlign": "top",
+      "strokeColor": "#000000",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 10
+    },
+    {
+      "type": "text",
+      "id": "txt2",
+      "x": 10,
+      "y": 50,
+      "width": 200,
+      "height": 50,
+      "text": "Line one\nLine two\nLine three",
+      "originalText": "Line one\nLine two\nLine three",
+      "fontSize": 16,
+      "fontFamily": 3,
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "strokeColor": "#364fc7",
+      "backgroundColor": "transparent",
+      "fillStyle": "none",
+      "strokeWidth": 1,
+      "strokeStyle": "solid",
+      "roughness": 0,
+      "opacity": 100,
+      "seed": 11
+    }
+  ],
+  "appState": {}
+}
