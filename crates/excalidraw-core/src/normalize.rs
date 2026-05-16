@@ -3,12 +3,19 @@
 use std::collections::HashMap;
 
 use crate::{
-    parse_excalidraw_color, BaseElement, Color, Element, ExcalidrawFile, LinearElement, TextElement,
+    parse_excalidraw_color, Arrowhead, BaseElement, Color, Element, ExcalidrawFile, FrameElement,
+    FreedrawElement, ImageElement, LinearElement, ShapeElement, TextElement, UnsupportedElement,
 };
 
 const FRACTIONAL_INDEX_DIGITS: &str =
     "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const MIN_FRACTIONAL_INDEX: &str = "A00000000000000000000000000";
+const EXPORT_PADDING: f64 = 16.0;
+const ROUGHNESS_BOUNDS_MARGIN: f64 = 1.5;
+const TEXT_WIDTH_FACTOR: f64 = 0.62;
+const FRAME_LABEL_HEIGHT: f64 = 32.0;
+const FRAME_LABEL_HORIZONTAL_PADDING: f64 = 16.0;
+const UNSUPPORTED_PLACEHOLDER_MIN_SIZE: f64 = 24.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
@@ -90,6 +97,27 @@ impl Rect {
             y: self.y - padding,
             width: self.width + padding * 2.0,
             height: self.height + padding * 2.0,
+        }
+    }
+
+    #[must_use]
+    pub fn normalized(self) -> Self {
+        let x = if self.width < 0.0 {
+            self.x + self.width
+        } else {
+            self.x
+        };
+        let y = if self.height < 0.0 {
+            self.y + self.height
+        } else {
+            self.y
+        };
+
+        Self {
+            x,
+            y,
+            width: self.width.abs(),
+            height: self.height.abs(),
         }
     }
 }
@@ -174,11 +202,11 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
         index_bound_elements(base, &mut bound_texts, &mut bound_arrows);
 
         let abs_points = element_abs_points(element);
-        let bounds = element_bounds(element, abs_points.as_deref());
+        let (bounds, rotated_bounds) = element_bounds(element, abs_points.as_deref());
         content_bounds = if elements.is_empty() {
-            bounds
+            rotated_bounds
         } else {
-            content_bounds.union(bounds)
+            content_bounds.union(rotated_bounds)
         };
 
         if let Some(frame_id) = &base.frame_id {
@@ -202,7 +230,7 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
             render_order: elements.len(),
             abs_points,
             bounds,
-            rotated_bounds: bounds,
+            rotated_bounds,
             container_id: text_element(element).and_then(|text| text.container_id.clone()),
             frame_id: base.frame_id.clone(),
         });
@@ -212,7 +240,7 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
     let id_map = build_id_map(&elements);
 
     Scene {
-        export_bounds: content_bounds.padded(16.0),
+        export_bounds: content_bounds.padded(EXPORT_PADDING),
         elements,
         id_map,
         frame_children,
@@ -406,19 +434,211 @@ fn element_abs_points(element: &Element) -> Option<Vec<Point>> {
     )
 }
 
-fn element_bounds(element: &Element, abs_points: Option<&[Point]>) -> Rect {
+fn element_bounds(element: &Element, abs_points: Option<&[Point]>) -> (Rect, Rect) {
+    let bounds = match element {
+        Element::Rectangle(shape) | Element::Ellipse(shape) | Element::Diamond(shape) => {
+            shape_bounds(shape)
+        }
+        Element::Arrow(linear) | Element::Line(linear) => linear_bounds(linear, abs_points),
+        Element::Text(text) => text_bounds(text),
+        Element::Freedraw(freedraw) => freedraw_bounds(freedraw),
+        Element::Image(image) => image_bounds(image),
+        Element::Frame(frame) | Element::MagicFrame(frame) => frame_bounds(frame),
+        Element::Embeddable(unsupported) | Element::Iframe(unsupported) => {
+            unsupported_bounds(unsupported)
+        }
+        Element::Unknown { .. } => Rect::empty(),
+    };
+    let rotated_bounds = rotate_bounds(bounds, element_base(element));
+    (bounds, rotated_bounds)
+}
+
+fn shape_bounds(shape: &ShapeElement) -> Rect {
+    base_rect(&shape.base).padded(element_padding(&shape.base))
+}
+
+fn linear_bounds(linear: &LinearElement, abs_points: Option<&[Point]>) -> Rect {
+    let mut bounds = abs_points
+        .filter(|points| !points.is_empty())
+        .map(Rect::from_points)
+        .unwrap_or_else(|| base_rect(&linear.base));
+    bounds = bounds.padded(element_padding(&linear.base));
+
     if let Some(points) = abs_points {
-        return Rect::from_points(points);
+        if let (Some(first), Some(last)) = (points.first(), points.last()) {
+            if linear.start_arrowhead.is_some() {
+                bounds = bounds.union(arrowhead_bounds(
+                    *first,
+                    &linear.base,
+                    &linear.start_arrowhead,
+                ));
+            }
+            if linear.end_arrowhead.is_some() {
+                bounds = bounds.union(arrowhead_bounds(*last, &linear.base, &linear.end_arrowhead));
+            }
+        }
     }
 
-    match element_base(element) {
-        Some(base) => Rect {
-            x: base.x,
-            y: base.y,
-            width: base.width,
-            height: base.height,
+    bounds
+}
+
+fn freedraw_bounds(freedraw: &FreedrawElement) -> Rect {
+    if freedraw.points.is_empty() {
+        return base_rect(&freedraw.base).padded(element_padding(&freedraw.base));
+    }
+
+    let points: Vec<Point> = freedraw
+        .points
+        .iter()
+        .map(|&[x, y]| Point {
+            x: freedraw.base.x + x,
+            y: freedraw.base.y + y,
+        })
+        .collect();
+    Rect::from_points(&points).padded(element_padding(&freedraw.base))
+}
+
+fn text_bounds(text: &TextElement) -> Rect {
+    let measured = measure_text(text);
+    let base = base_rect(&text.base);
+    Rect {
+        x: base.x,
+        y: base.y,
+        width: base.width.max(measured.width),
+        height: base.height.max(measured.height),
+    }
+    .padded(element_padding(&text.base))
+}
+
+fn image_bounds(image: &ImageElement) -> Rect {
+    let mut bounds = base_rect(&image.base);
+    if let Some([scale_x, scale_y]) = image.scale {
+        bounds.width *= scale_x.abs();
+        bounds.height *= scale_y.abs();
+    }
+    if let Some(crop) = &image.crop {
+        if crop.width > 0.0 && crop.height > 0.0 {
+            bounds.width = bounds.width.max(crop.width);
+            bounds.height = bounds.height.max(crop.height);
+        }
+    }
+    bounds.padded(element_padding(&image.base))
+}
+
+fn frame_bounds(frame: &FrameElement) -> Rect {
+    let mut bounds = base_rect(&frame.base).padded(element_padding(&frame.base));
+    if let Some(name) = frame.name.as_deref().filter(|name| !name.is_empty()) {
+        let label_width =
+            name.chars().count() as f64 * 14.0 * TEXT_WIDTH_FACTOR + FRAME_LABEL_HORIZONTAL_PADDING;
+        let label_bounds = Rect {
+            x: frame.base.x,
+            y: frame.base.y - FRAME_LABEL_HEIGHT,
+            width: label_width.max(frame.base.width.min(160.0)),
+            height: FRAME_LABEL_HEIGHT,
+        };
+        bounds = bounds.union(label_bounds);
+    }
+    bounds
+}
+
+fn unsupported_bounds(unsupported: &UnsupportedElement) -> Rect {
+    let mut bounds = base_rect(&unsupported.base);
+    bounds.width = bounds.width.max(UNSUPPORTED_PLACEHOLDER_MIN_SIZE);
+    bounds.height = bounds.height.max(UNSUPPORTED_PLACEHOLDER_MIN_SIZE);
+    bounds.padded(element_padding(&unsupported.base))
+}
+
+fn base_rect(base: &BaseElement) -> Rect {
+    Rect {
+        x: base.x,
+        y: base.y,
+        width: base.width,
+        height: base.height,
+    }
+    .normalized()
+}
+
+fn element_padding(base: &BaseElement) -> f64 {
+    (base.stroke_width.max(0.0) / 2.0) + base.roughness.max(0.0) * ROUGHNESS_BOUNDS_MARGIN
+}
+
+fn arrowhead_bounds(point: Point, base: &BaseElement, arrowhead: &Option<Arrowhead>) -> Rect {
+    let scale = match arrowhead {
+        Some(Arrowhead::Bar) => 4.0,
+        Some(Arrowhead::Dot | Arrowhead::Circle | Arrowhead::Diamond) => 5.0,
+        Some(_) => 6.0,
+        None => 0.0,
+    };
+    let radius = (base.stroke_width.max(1.0) * scale).max(10.0);
+    Rect {
+        x: point.x - radius,
+        y: point.y - radius,
+        width: radius * 2.0,
+        height: radius * 2.0,
+    }
+}
+
+fn measure_text(text: &TextElement) -> Rect {
+    let line_count = text.text.lines().count().max(1) as f64;
+    let max_chars = text
+        .text
+        .lines()
+        .map(|line| line.chars().count())
+        .max()
+        .unwrap_or_default() as f64;
+    Rect {
+        x: text.base.x,
+        y: text.base.y,
+        width: max_chars * text.font_size * TEXT_WIDTH_FACTOR,
+        height: line_count * text.font_size * text.line_height,
+    }
+}
+
+fn rotate_bounds(bounds: Rect, base: Option<&BaseElement>) -> Rect {
+    let Some(base) = base else {
+        return bounds;
+    };
+    if base.angle == 0.0 {
+        return bounds;
+    }
+
+    let center = Point {
+        x: base.x + base.width / 2.0,
+        y: base.y + base.height / 2.0,
+    };
+    let corners = [
+        Point {
+            x: bounds.x,
+            y: bounds.y,
         },
-        None => Rect::empty(),
+        Point {
+            x: bounds.x + bounds.width,
+            y: bounds.y,
+        },
+        Point {
+            x: bounds.x + bounds.width,
+            y: bounds.y + bounds.height,
+        },
+        Point {
+            x: bounds.x,
+            y: bounds.y + bounds.height,
+        },
+    ];
+    let rotated: Vec<Point> = corners
+        .into_iter()
+        .map(|point| rotate_point(point, center, base.angle))
+        .collect();
+    Rect::from_points(&rotated)
+}
+
+fn rotate_point(point: Point, center: Point, angle: f64) -> Point {
+    let sin = angle.sin();
+    let cos = angle.cos();
+    let dx = point.x - center.x;
+    let dy = point.y - center.y;
+    Point {
+        x: center.x + dx * cos - dy * sin,
+        y: center.y + dx * sin + dy * cos,
     }
 }
 
@@ -521,14 +741,141 @@ mod tests {
         ensure_eq(
             &line.bounds,
             Rect {
-                x: 0.0,
-                y: 7.0,
-                width: 15.0,
-                height: 20.0,
+                x: -2.5,
+                y: 4.5,
+                width: 20.0,
+                height: 25.0,
             },
             "line bounds",
         )?;
         ensure_eq(&scene.content_bounds, line.bounds, "scene bounds")
+    }
+
+    #[test]
+    fn expands_and_rotates_shape_bounds() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements": [
+                    {"type":"rectangle","id":"rect","x":0,"y":0,"width":10,"height":20,"angle":1.5707963267948966}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let [rect] = scene.elements.as_slice() else {
+            return Err("expected one normalized rectangle".into());
+        };
+
+        ensure_rect_close(
+            &rect.bounds,
+            Rect {
+                x: -2.5,
+                y: -2.5,
+                width: 15.0,
+                height: 25.0,
+            },
+            "unrotated rectangle bounds",
+        )?;
+        ensure_rect_close(
+            &rect.rotated_bounds,
+            Rect {
+                x: -7.5,
+                y: 2.5,
+                width: 25.0,
+                height: 15.0,
+            },
+            "rotated rectangle bounds",
+        )?;
+        ensure_rect_close(&scene.content_bounds, rect.rotated_bounds, "scene bounds")?;
+        ensure_rect_close(
+            &scene.export_bounds,
+            rect.rotated_bounds.padded(16.0),
+            "export bounds",
+        )
+    }
+
+    #[test]
+    fn estimates_text_frame_image_and_unsupported_bounds() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements": [
+                    {"type":"text","id":"text","x":0,"y":0,"fontSize":10,"lineHeight":2,"text":"abcd\nxy"},
+                    {"type":"frame","id":"frame","x":10,"y":20,"width":100,"height":50,"name":"Board"},
+                    {"type":"image","id":"image","x":200,"y":5,"width":20,"height":10,"scale":[-2,3]},
+                    {"type":"embeddable","id":"embed","x":5,"y":6}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let [text, frame, image, embed] = scene.elements.as_slice() else {
+            return Err("expected four normalized elements".into());
+        };
+
+        ensure_rect_close(
+            &text.bounds,
+            Rect {
+                x: -2.5,
+                y: -2.5,
+                width: 29.8,
+                height: 45.0,
+            },
+            "text bounds",
+        )?;
+        ensure_rect_close(
+            &frame.bounds,
+            Rect {
+                x: 7.5,
+                y: -12.0,
+                width: 105.0,
+                height: 84.5,
+            },
+            "frame label bounds",
+        )?;
+        ensure_rect_close(
+            &image.bounds,
+            Rect {
+                x: 197.5,
+                y: 2.5,
+                width: 45.0,
+                height: 35.0,
+            },
+            "scaled image bounds",
+        )?;
+        ensure_rect_close(
+            &embed.bounds,
+            Rect {
+                x: 2.5,
+                y: 3.5,
+                width: 29.0,
+                height: 29.0,
+            },
+            "unsupported placeholder bounds",
+        )
+    }
+
+    #[test]
+    fn includes_arrowhead_extents_in_linear_bounds() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements": [
+                    {"type":"arrow","id":"arrow","x":0,"y":0,"strokeWidth":4,"roughness":0,"points":[[0,0],[10,0]],"startArrowhead":"dot","endArrowhead":"arrow"}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let [arrow] = scene.elements.as_slice() else {
+            return Err("expected one normalized arrow".into());
+        };
+
+        ensure_rect_close(
+            &arrow.bounds,
+            Rect {
+                x: -20.0,
+                y: -24.0,
+                width: 54.0,
+                height: 48.0,
+            },
+            "arrowhead bounds",
+        )
     }
 
     #[test]
@@ -699,6 +1046,19 @@ mod tests {
         U: std::fmt::Debug,
     {
         if actual.eq(&expected) {
+            Ok(())
+        } else {
+            Err(format!("{label}: expected {expected:?}, got {actual:?}").into())
+        }
+    }
+
+    fn ensure_rect_close(actual: &Rect, expected: Rect, label: &str) -> Result<(), Box<dyn Error>> {
+        const EPSILON: f64 = 1e-9;
+        let close = (actual.x - expected.x).abs() < EPSILON
+            && (actual.y - expected.y).abs() < EPSILON
+            && (actual.width - expected.width).abs() < EPSILON
+            && (actual.height - expected.height).abs() < EPSILON;
+        if close {
             Ok(())
         } else {
             Err(format!("{label}: expected {expected:?}, got {actual:?}").into())
