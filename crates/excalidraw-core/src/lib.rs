@@ -3,6 +3,15 @@
 //! This crate owns file-format compatibility and scene normalization. Rendering
 //! and user-interface crates consume this API instead of parsing independently.
 
+pub mod types;
+
+pub use types::{
+    AppState, ArrowBinding, Arrowhead, BaseElement, BoundElement, Element, ExcalidrawFile,
+    FileData, FillStyle, FrameElement, FreedrawElement, ImageCrop, ImageElement, LinearElement,
+    Roundness, ShapeElement, StrokeStyle, TextAlign, TextElement, UnsupportedElement,
+    VerticalAlign,
+};
+
 /// Current crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
