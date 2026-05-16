@@ -3,8 +3,12 @@
 //! This crate owns file-format compatibility and scene normalization. Rendering
 //! and user-interface crates consume this API instead of parsing independently.
 
+pub mod color;
+pub mod defaults;
 pub mod types;
 
+pub use color::{parse_excalidraw_color, Color, ColorParseError};
+pub use defaults::font_family_css;
 pub use types::{
     AppState, ArrowBinding, Arrowhead, BaseElement, BoundElement, Element, ExcalidrawFile,
     FileData, FillStyle, FrameElement, FreedrawElement, ImageCrop, ImageElement, LinearElement,

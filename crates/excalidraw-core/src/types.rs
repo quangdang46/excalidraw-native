@@ -3,6 +3,13 @@ use std::collections::HashMap;
 use serde::{Deserialize, Deserializer};
 use serde_json::Value;
 
+use crate::defaults::{
+    default_background_color, default_file_type, default_fill_style, default_font_family,
+    default_font_size, default_line_height, default_opacity, default_roughness,
+    default_stroke_color, default_stroke_style, default_stroke_width, default_text_align,
+    default_version, default_vertical_align,
+};
+
 /// Top-level `.excalidraw` payload.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ExcalidrawFile {
@@ -451,62 +458,6 @@ where
     E: serde::de::Error,
 {
     serde_json::from_value(raw).map(wrap).map_err(E::custom)
-}
-
-fn default_file_type() -> String {
-    "excalidraw".to_owned()
-}
-
-fn default_version() -> u32 {
-    2
-}
-
-fn default_stroke_color() -> String {
-    "#1e1e1e".to_owned()
-}
-
-fn default_background_color() -> String {
-    "transparent".to_owned()
-}
-
-fn default_fill_style() -> FillStyle {
-    FillStyle::Hachure
-}
-
-fn default_stroke_width() -> f64 {
-    2.0
-}
-
-fn default_stroke_style() -> StrokeStyle {
-    StrokeStyle::Solid
-}
-
-fn default_roughness() -> f64 {
-    1.0
-}
-
-fn default_opacity() -> f64 {
-    100.0
-}
-
-fn default_font_size() -> f64 {
-    20.0
-}
-
-fn default_font_family() -> u32 {
-    5
-}
-
-fn default_text_align() -> TextAlign {
-    TextAlign::Left
-}
-
-fn default_vertical_align() -> VerticalAlign {
-    VerticalAlign::Top
-}
-
-fn default_line_height() -> f64 {
-    1.25
 }
 
 #[cfg(test)]
