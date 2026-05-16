@@ -1108,4 +1108,167 @@ mod tests {
             .map(|base| base.id.as_str())
             .collect()
     }
+
+    use std::path::Path;
+
+    fn fixture_path(name: &str) -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .join("tests/fixtures")
+            .join(name)
+    }
+
+    fn normalize_fixture(name: &str) -> Result<crate::Scene, Box<dyn Error>> {
+        let raw = std::fs::read_to_string(fixture_path(name))
+            .map_err(|e| format!("fixture {name}: {e}"))?;
+        let file = crate::parse_str(&raw)?;
+        Ok(crate::normalize_file(&file))
+    }
+
+    #[test]
+    fn normalize_simple_shapes_preserves_order_and_builds_id_map() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("simple_shapes.excalidraw")?;
+        ensure(scene.elements.len() == 3, "element count")?;
+        ensure(scene.id_map.contains_key("rect1"), "rect1 in id_map")?;
+        ensure(scene.id_map.contains_key("ell1"), "ell1 in id_map")?;
+        ensure(scene.id_map.contains_key("dia1"), "dia1 in id_map")?;
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_text_containers_builds_bound_texts() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("text_containers.excalidraw")?;
+        ensure(
+            scene.bound_texts.contains_key("box1"),
+            "box1 has bound text",
+        )?;
+        let bound = scene.bound_texts.get("box1").unwrap();
+        ensure(
+            bound.contains(&"txt_box1".to_owned()),
+            "txt_box1 bound to box1",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_bound_arrows_builds_relationships() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("arrows_bound.excalidraw")?;
+        // Rectangles in this fixture have no boundElements, so bound_arrows is empty for them.
+        ensure(
+            !scene.bound_arrows.contains_key("src"),
+            "src has no declared bound arrow",
+        )?;
+        ensure(
+            scene.bound_texts.contains_key("conn"),
+            "conn has bound text",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_frame_builds_frame_children() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("frame_clip.excalidraw")?;
+        ensure(scene.frame_children.contains_key("fr1"), "fr1 has children")?;
+        let children = scene.frame_children.get("fr1").unwrap();
+        ensure(children.contains(&"r_in_fr".to_owned()), "r_in_fr in fr1")?;
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_image_preserves_files_and_bounds() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("image_embed.excalidraw")?;
+        ensure(!scene.files.is_empty(), "scene has files")?;
+        ensure(scene.files.contains_key("tiny_png"), "tiny_png in files")?;
+        // Elements should have reasonable bounds
+        for element in &scene.elements {
+            ensure(element.bounds.width > 0.0, "element has width")?;
+            ensure(element.bounds.height > 0.0, "element has height")?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_freedraw_computes_abs_points() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("freedraw.excalidraw")?;
+        for element in &scene.elements {
+            ensure(element.abs_points.is_some(), "freedraw has abs_points")?;
+            let points = element.abs_points.as_ref().unwrap();
+            ensure(points.len() >= 2, "freedraw has at least 2 points")?;
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_unsupported_includes_unknown_elements() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("unsupported.excalidraw")?;
+        ensure(scene.elements.len() == 3, "all elements included")?;
+        // Unknown elements should be present even without a parsed BaseElement
+        let has_unknown = scene
+            .elements
+            .iter()
+            .any(|e| matches!(&e.element, crate::Element::Unknown { .. }));
+        ensure(has_unknown, "unknown element present")?;
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_complex_diagram_has_all_relationships() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("complex_diagram.excalidraw")?;
+        ensure(scene.elements.len() == 8, "element count")?;
+        // Bound texts for containers
+        ensure(
+            scene.bound_texts.contains_key("cplx_r1"),
+            "cplx_r1 bound text",
+        )?;
+        ensure(
+            scene.bound_texts.contains_key("cplx_r2"),
+            "cplx_r2 bound text",
+        )?;
+        // Bound arrows
+        ensure(
+            scene.bound_arrows.contains_key("cplx_r1"),
+            "cplx_r1 bound arrow",
+        )?;
+        ensure(
+            scene.bound_arrows.contains_key("cplx_r2"),
+            "cplx_r2 bound arrow",
+        )?;
+        // Scene background
+        ensure(
+            scene.background_color.r > 0
+                || scene.background_color.g > 0
+                || scene.background_color.b > 0,
+            "non-black background",
+        )?;
+        // Export bounds should be wider than content bounds
+        ensure(
+            scene.export_bounds.width >= scene.content_bounds.width,
+            "export wider",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn normalize_large_fixture_computes_scene_bounds() -> Result<(), Box<dyn Error>> {
+        let scene = normalize_fixture("large_200_elements.excalidraw")?;
+        ensure(scene.elements.len() == 200, "element count")?;
+        ensure(scene.content_bounds.width > 0.0, "content width")?;
+        ensure(scene.content_bounds.height > 0.0, "content height")?;
+        ensure(
+            scene.export_bounds.width >= scene.content_bounds.width,
+            "export width",
+        )?;
+        Ok(())
+    }
+
+    fn ensure(value: bool, label: &str) -> Result<(), Box<dyn Error>> {
+        if value {
+            Ok(())
+        } else {
+            Err(label.to_owned().into())
+        }
+    }
 }
