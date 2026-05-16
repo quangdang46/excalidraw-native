@@ -6,8 +6,8 @@
 use std::collections::HashSet;
 
 use excalidraw_core::{
-    BaseElement, Color, Element, FillStyle as ExcalidrawFillStyle, Rect, Scene, ShapeElement,
-    StrokeStyle,
+    Arrowhead, BaseElement, Color, Element, FillStyle as ExcalidrawFillStyle, LinearElement,
+    NormalizedElement, Point, Rect, Scene, ShapeElement, StrokeStyle,
 };
 use rough_rs::svg::drawable_to_paths;
 use rough_rs::{Config, Generator, Options as RoughOptions};
@@ -340,7 +340,7 @@ pub fn render_svg(
 
     let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
     for normalized in &scene.elements {
-        for node in render_element(&normalized.element, options) {
+        for node in render_element(normalized, options) {
             content = content.child(node);
         }
     }
@@ -430,11 +430,13 @@ fn handle_unsupported(
     }
 }
 
-fn render_element(element: &Element, options: &RenderOptions) -> Vec<SvgNode> {
-    match element {
+fn render_element(normalized: &NormalizedElement, options: &RenderOptions) -> Vec<SvgNode> {
+    match &normalized.element {
         Element::Rectangle(shape) => render_shape(shape, ShapeKind::Rectangle, options),
         Element::Ellipse(shape) => render_shape(shape, ShapeKind::Ellipse, options),
         Element::Diamond(shape) => render_shape(shape, ShapeKind::Diamond, options),
+        Element::Line(linear) => render_linear(linear, normalized.abs_points.as_deref(), false),
+        Element::Arrow(linear) => render_linear(linear, normalized.abs_points.as_deref(), true),
         _ => Vec::new(),
     }
 }
@@ -451,6 +453,53 @@ fn render_shape(shape: &ShapeElement, kind: ShapeKind, options: &RenderOptions) 
         RenderQuality::Clean => vec![clean_shape_node(shape, kind)],
         RenderQuality::Full | RenderQuality::FastSvg => rough_shape_nodes(shape, kind),
     }
+}
+
+fn render_linear(
+    linear: &LinearElement,
+    abs_points: Option<&[Point]>,
+    include_heads: bool,
+) -> Vec<SvgNode> {
+    let Some(points) = abs_points.filter(|points| points.len() >= 2) else {
+        return Vec::new();
+    };
+    let style = RenderStyle::from_base(&linear.base);
+    let mut group = SvgNode::new("g");
+    if let Some(transform) = &style.transform {
+        group = group.attr("transform", transform);
+    }
+    if let Some(opacity) = &style.opacity {
+        group = group.attr("opacity", opacity);
+    }
+
+    let mut path = SvgNode::new("path")
+        .attr("d", linear_path_data(points))
+        .attr("stroke", style.stroke.clone())
+        .attr("stroke-width", style.stroke_width.to_string())
+        .attr("fill", "none");
+    if let Some(dasharray) = &style.stroke_dasharray {
+        path = path.attr("stroke-dasharray", dasharray);
+    }
+    group = group.child(path);
+
+    if include_heads {
+        if let Some((tip, rest)) = points.split_first() {
+            if let (Some(head), Some(neighbor)) = (&linear.start_arrowhead, rest.first()) {
+                if let Some(node) = arrowhead_node(head, *tip, *neighbor, &style) {
+                    group = group.child(node);
+                }
+            }
+        }
+        if let Some((tip, rest)) = points.split_last() {
+            if let (Some(head), Some(neighbor)) = (&linear.end_arrowhead, rest.last()) {
+                if let Some(node) = arrowhead_node(head, *tip, *neighbor, &style) {
+                    group = group.child(node);
+                }
+            }
+        }
+    }
+
+    vec![group]
 }
 
 fn clean_shape_node(shape: &ShapeElement, kind: ShapeKind) -> SvgNode {
@@ -519,6 +568,173 @@ fn rough_shape_nodes(shape: &ShapeElement, kind: ShapeKind) -> Vec<SvgNode> {
         group = group.child(node);
     }
     vec![group]
+}
+
+fn linear_path_data(points: &[Point]) -> String {
+    let mut data = String::new();
+    for (index, point) in points.iter().enumerate() {
+        if index == 0 {
+            data.push('M');
+        } else {
+            data.push_str(" L");
+        }
+        data.push_str(&point.x.to_string());
+        data.push(' ');
+        data.push_str(&point.y.to_string());
+    }
+    data
+}
+
+fn arrowhead_node(
+    head: &Arrowhead,
+    tip: Point,
+    neighbor: Point,
+    style: &RenderStyle,
+) -> Option<SvgNode> {
+    if matches!(head, Arrowhead::Unknown) {
+        return None;
+    }
+    let direction = arrow_direction(tip, neighbor)?;
+    let normal = Point {
+        x: -direction.y,
+        y: direction.x,
+    };
+    let size = (style.stroke_width * 6.0).max(12.0);
+    let base = Point {
+        x: tip.x - direction.x * size,
+        y: tip.y - direction.y * size,
+    };
+
+    let node = match head {
+        Arrowhead::Arrow => SvgNode::new("path")
+            .attr(
+                "d",
+                format!(
+                    "M{} {} L{} {} M{} {} L{} {}",
+                    base.x + normal.x * size * 0.45,
+                    base.y + normal.y * size * 0.45,
+                    tip.x,
+                    tip.y,
+                    tip.x,
+                    tip.y,
+                    base.x - normal.x * size * 0.45,
+                    base.y - normal.y * size * 0.45
+                ),
+            )
+            .attr("stroke", style.stroke.clone())
+            .attr("stroke-width", style.stroke_width.to_string())
+            .attr("fill", "none"),
+        Arrowhead::Triangle | Arrowhead::TriangleOutline => {
+            let points = triangle_points(tip, base, normal, size);
+            let fill = if matches!(head, Arrowhead::TriangleOutline) {
+                "none".to_owned()
+            } else {
+                style.stroke.clone()
+            };
+            SvgNode::new("polygon")
+                .attr("points", points)
+                .attr("stroke", style.stroke.clone())
+                .attr("stroke-width", style.stroke_width.to_string())
+                .attr("fill", fill)
+        }
+        Arrowhead::Bar => SvgNode::new("path")
+            .attr(
+                "d",
+                format!(
+                    "M{} {} L{} {}",
+                    tip.x + normal.x * size * 0.5,
+                    tip.y + normal.y * size * 0.5,
+                    tip.x - normal.x * size * 0.5,
+                    tip.y - normal.y * size * 0.5
+                ),
+            )
+            .attr("stroke", style.stroke.clone())
+            .attr("stroke-width", style.stroke_width.to_string())
+            .attr("fill", "none"),
+        Arrowhead::Dot | Arrowhead::Circle => SvgNode::new("circle")
+            .attr("cx", tip.x.to_string())
+            .attr("cy", tip.y.to_string())
+            .attr("r", (size * 0.35).to_string())
+            .attr("stroke", style.stroke.clone())
+            .attr("stroke-width", style.stroke_width.to_string())
+            .attr(
+                "fill",
+                if matches!(head, Arrowhead::Circle) {
+                    "none".to_owned()
+                } else {
+                    style.stroke.clone()
+                },
+            ),
+        Arrowhead::Diamond => SvgNode::new("polygon")
+            .attr("points", diamond_arrowhead_points(tip, base, normal, size))
+            .attr("stroke", style.stroke.clone())
+            .attr("stroke-width", style.stroke_width.to_string())
+            .attr("fill", style.stroke.clone()),
+        Arrowhead::Crowfoot => SvgNode::new("path")
+            .attr(
+                "d",
+                format!(
+                    "M{} {} L{} {} M{} {} L{} {} M{} {} L{} {}",
+                    tip.x,
+                    tip.y,
+                    base.x + normal.x * size * 0.55,
+                    base.y + normal.y * size * 0.55,
+                    tip.x,
+                    tip.y,
+                    base.x,
+                    base.y,
+                    tip.x,
+                    tip.y,
+                    base.x - normal.x * size * 0.55,
+                    base.y - normal.y * size * 0.55
+                ),
+            )
+            .attr("stroke", style.stroke.clone())
+            .attr("stroke-width", style.stroke_width.to_string())
+            .attr("fill", "none"),
+        Arrowhead::Unknown => return None,
+    };
+    Some(node)
+}
+
+fn arrow_direction(tip: Point, neighbor: Point) -> Option<Point> {
+    let dx = tip.x - neighbor.x;
+    let dy = tip.y - neighbor.y;
+    let length = (dx * dx + dy * dy).sqrt();
+    (length > f64::EPSILON).then_some(Point {
+        x: dx / length,
+        y: dy / length,
+    })
+}
+
+fn triangle_points(tip: Point, base: Point, normal: Point, size: f64) -> String {
+    format!(
+        "{},{} {},{} {},{}",
+        tip.x,
+        tip.y,
+        base.x + normal.x * size * 0.5,
+        base.y + normal.y * size * 0.5,
+        base.x - normal.x * size * 0.5,
+        base.y - normal.y * size * 0.5
+    )
+}
+
+fn diamond_arrowhead_points(tip: Point, base: Point, normal: Point, size: f64) -> String {
+    let center = Point {
+        x: (tip.x + base.x) / 2.0,
+        y: (tip.y + base.y) / 2.0,
+    };
+    format!(
+        "{},{} {},{} {},{} {},{}",
+        tip.x,
+        tip.y,
+        center.x + normal.x * size * 0.35,
+        center.y + normal.y * size * 0.35,
+        base.x,
+        base.y,
+        center.x - normal.x * size * 0.35,
+        center.y - normal.y * size * 0.35
+    )
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1099,6 +1315,70 @@ mod tests {
             "rough dash",
         )?;
         ensure(rough.value.contains("opacity=\"0.5\""), "rough opacity")?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_lines_from_stored_points_with_dash_styles() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {
+                        "type":"line",
+                        "id":"line",
+                        "x":5,
+                        "y":7,
+                        "strokeWidth":2,
+                        "strokeStyle":"dotted",
+                        "points":[[0,0],[10,5],[20,0]]
+                    }
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(output.value.contains("d=\"M5 7 L15 12 L25 7\""), "path")?;
+        ensure(
+            output.value.contains("stroke-dasharray=\"2 4\""),
+            "dotted dash",
+        )?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_explicit_arrowhead_geometry_for_supported_types() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"arrow","id":"arrow","x":0,"y":0,"strokeWidth":2,"points":[[0,0],[40,0]],"startArrowhead":"arrow","endArrowhead":"triangle"},
+                    {"type":"arrow","id":"outline","x":0,"y":20,"strokeWidth":2,"points":[[0,0],[40,0]],"startArrowhead":"triangle_outline","endArrowhead":"bar"},
+                    {"type":"arrow","id":"dots","x":0,"y":40,"strokeWidth":2,"points":[[0,0],[40,0]],"startArrowhead":"dot","endArrowhead":"circle"},
+                    {"type":"arrow","id":"diamond","x":0,"y":60,"strokeWidth":2,"points":[[0,0],[40,0]],"startArrowhead":"diamond","endArrowhead":"crowfoot"}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(output.value.contains("<polygon"), "polygon heads")?;
+        ensure(output.value.contains("<circle"), "circle heads")?;
+        ensure(output.value.contains("fill=\"none\""), "outline head")?;
+        ensure(output.value.matches("<path").count() >= 5, "path heads")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
         Ok(())
     }
 
