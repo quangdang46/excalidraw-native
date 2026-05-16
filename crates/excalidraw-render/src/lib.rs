@@ -436,10 +436,66 @@ pub fn render_svg(
 }
 
 pub fn render_png(
-    _scene: &Scene,
-    _options: &RenderOptions,
+    scene: &Scene,
+    options: &RenderOptions,
 ) -> Result<RenderOutput<Vec<u8>>, RenderError> {
-    Err(RenderError::PngNotImplemented)
+    let mut warnings = collect_policy_warnings(scene, options)?;
+    let fonts = FontRegistry::new();
+    let view_box = scene.content_bounds.padded(options.padding.max(0.0));
+    let safe_scale = if options.scale.is_finite() && options.scale > 0.0 {
+        options.scale
+    } else {
+        1.0
+    };
+    let mut document = SvgDocument::new_scaled(view_box, safe_scale);
+
+    if let Some(background) = background_color(scene, options) {
+        document = document.node(
+            SvgNode::new("rect")
+                .attr("x", view_box.x.to_string())
+                .attr("y", view_box.y.to_string())
+                .attr("width", view_box.width.to_string())
+                .attr("height", view_box.height.to_string())
+                .attr("fill", color_to_svg(background)),
+        );
+    }
+
+    let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
+    for normalized in &scene.elements {
+        let rendered = render_element(normalized, scene, options, &fonts, &mut warnings);
+        for def in rendered.defs {
+            document = document.def(def);
+        }
+        for node in rendered.nodes {
+            content = content.child(node);
+        }
+    }
+    document = document.node(content);
+    let svg = document.to_string()?;
+
+    let tree = usvg::Tree::from_str(&svg, &usvg::Options::default())
+        .map_err(|error| RenderError::InvalidSvg(error.to_string()))?;
+
+    let size = tree.size();
+    let width = (size.width() as f64 * safe_scale).ceil() as u32;
+    let height = (size.height() as f64 * safe_scale).ceil() as u32;
+    let width = width.max(1);
+    let height = height.max(1);
+
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)
+        .ok_or_else(|| RenderError::InvalidSvg("pixmap allocation failed".to_owned()))?;
+
+    let transform = resvg::tiny_skia::Transform::from_scale(safe_scale as f32, safe_scale as f32);
+    resvg::render(&tree, transform, &mut pixmap.as_mut());
+
+    let png_bytes = pixmap
+        .encode_png()
+        .map_err(|error| RenderError::InvalidSvg(format!("PNG encoding: {error}")))?;
+
+    Ok(RenderOutput {
+        value: png_bytes,
+        warnings,
+    })
 }
 
 fn collect_policy_warnings(
@@ -1556,9 +1612,9 @@ mod tests {
     use excalidraw_core::{normalize_file, parse_str};
 
     use super::{
-        color_to_svg, render_svg, sanitize_id, BackgroundMode, DefIdAllocator, FontRegistry,
-        ImagePolicy, RenderError, RenderOptions, RenderOutput, RenderWarning, SvgDocument, SvgNode,
-        TextPolicy, UnsupportedElementMode,
+        color_to_svg, render_png, render_svg, sanitize_id, BackgroundMode, DefIdAllocator,
+        FontRegistry, ImagePolicy, RenderError, RenderOptions, RenderOutput, RenderWarning,
+        SvgDocument, SvgNode, TextPolicy, UnsupportedElementMode,
     };
 
     #[test]
@@ -1925,14 +1981,10 @@ mod tests {
             "unsupported error",
         )?;
 
-        let png_error = super::render_png(&scene, &RenderOptions::default())
-            .map(|_: RenderOutput<Vec<u8>>| ())
-            .map_err(|error| error.to_string());
-        ensure_eq(
-            &png_error,
-            Err("PNG rendering is not implemented yet".to_owned()),
-            "png error",
-        )
+        let png_output = super::render_png(&scene, &RenderOptions::default())?;
+        ensure(png_output.value.starts_with(b"\x89PNG"), "png header")?;
+        ensure(png_output.value.len() > 100, "png has content")?;
+        Ok(())
     }
 
     #[test]
@@ -2414,6 +2466,90 @@ mod tests {
             usvg::Tree::from_str(&output.value, &usvg::Options::default())
                 .map_err(|e| format!("{name} usvg: {e}"))?;
         }
+        Ok(())
+    }
+
+    #[test]
+    fn render_png_produces_valid_png_bytes() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"rectangle","id":"r","x":0,"y":0,"width":50,"height":30}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_png(&scene, &RenderOptions::default())?;
+        ensure(output.value.starts_with(b"\x89PNG"), "png magic bytes")?;
+        ensure(output.value.len() > 100, "png has meaningful size")?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_png_respects_scale() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"rectangle","id":"r","x":0,"y":0,"width":50,"height":30}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let small = render_png(
+            &scene,
+            &RenderOptions {
+                scale: 1.0,
+                ..RenderOptions::default()
+            },
+        )?;
+        let large = render_png(
+            &scene,
+            &RenderOptions {
+                scale: 2.0,
+                ..RenderOptions::default()
+            },
+        )?;
+        ensure(
+            large.value.len() > small.value.len(),
+            "larger scale produces bigger png",
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_png_transparent_background() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"ellipse","id":"e","x":0,"y":0,"width":40,"height":40,
+                    "strokeColor":"#000000","backgroundColor":"#ff0000","fillStyle":"solid"}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_png(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                ..RenderOptions::default()
+            },
+        )?;
+        ensure(output.value.starts_with(b"\x89PNG"), "png header")?;
+        Ok(())
+    }
+
+    #[test]
+    fn render_png_rasterizes_text_and_complex_fixtures() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"rectangle","id":"r","x":0,"y":0,"width":100,"height":60,
+                     "strokeColor":"#000000","backgroundColor":"#a5d8ff","fillStyle":"solid"},
+                    {"type":"text","id":"t","x":10,"y":10,"width":80,"height":25,
+                     "text":"Hello","originalText":"Hello","fontSize":20,"fontFamily":1},
+                    {"type":"freedraw","id":"f","x":120,"y":10,"width":60,"height":30,
+                     "points":[[0,0],[20,10],[40,5],[60,20]]}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_png(&scene, &RenderOptions::default())?;
+        ensure(output.value.starts_with(b"\x89PNG"), "png header")?;
+        ensure(output.value.len() > 200, "complex png has meaningful size")?;
         Ok(())
     }
 
