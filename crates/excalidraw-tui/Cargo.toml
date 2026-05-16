@@ -1,0 +1,17 @@
+[package]
+name = "excalidraw-tui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Terminal preview UI for excalidraw-native"
+
+[dependencies]
+crossterm.workspace = true
+excalidraw-core = { path = "../excalidraw-core" }
+excalidraw-render = { path = "../excalidraw-render" }
+ratatui.workspace = true
+ratatui-image.workspace = true
+thiserror.workspace = true
+

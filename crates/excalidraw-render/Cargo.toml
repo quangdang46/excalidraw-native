@@ -1,0 +1,21 @@
+[package]
+name = "excalidraw-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "SVG and PNG rendering backend for excalidraw-native"
+
+[dependencies]
+base64.workspace = true
+excalidraw-core = { path = "../excalidraw-core" }
+fontdb.workspace = true
+image.workspace = true
+resvg.workspace = true
+rough-rs.workspace = true
+thiserror.workspace = true
+tiny-skia.workspace = true
+unicode-width.workspace = true
+usvg.workspace = true
+

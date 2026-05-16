@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/excalidraw-core",
+    "crates/excalidraw-render",
+    "crates/excalidraw-tui",
+    "crates/excalidraw-mcp",
+    "crates/excalidraw-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+repository = "https://github.com/quangdang46/excalidraw-native"
+rust-version = "1.80"
+
+[workspace.dependencies]
+anyhow = "1"
+base64 = "0.22"
+clap = { version = "4", features = ["derive", "color"] }
+crossterm = "0.29"
+fontdb = "0.23"
+image = "0.25"
+ratatui = "0.29"
+ratatui-image = "8"
+resvg = "=0.47.0"
+rmcp = { version = "=1.7.0", features = ["server", "transport-io"] }
+rough-rs = { path = "../rough-rs" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"
+tiny-skia = "0.11"
+tokio = { version = "1", features = ["full"] }
+unicode-width = "0.2"
+usvg = "=0.47.0"
+
