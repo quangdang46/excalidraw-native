@@ -1,5 +1,7 @@
 # excalidraw-native
 
+[![CI](https://github.com/quangdang46/excalidraw-native/actions/workflows/ci.yml/badge.svg)](https://github.com/quangdang46/excalidraw-native/actions/workflows/ci.yml)
+
 > Native Rust renderer for `.excalidraw` files. No browser. No Node.js. No Puppeteer.
 
 `excalidraw-native` parses Excalidraw JSON and renders it to **SVG**, **PNG**, terminal previews, and MCP tool outputs while preserving the hand-drawn Excalidraw style through [`rough-rs`](https://crates.io/crates/rough-rs).
