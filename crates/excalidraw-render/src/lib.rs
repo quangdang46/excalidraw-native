@@ -5,7 +5,11 @@
 
 use std::collections::HashSet;
 
-use excalidraw_core::{Color, Element, Rect, Scene};
+use excalidraw_core::{
+    BaseElement, Color, Element, FillStyle as ExcalidrawFillStyle, Rect, Scene, ShapeElement,
+};
+use rough_rs::svg::drawable_to_paths;
+use rough_rs::{Config, Generator, Options as RoughOptions};
 use thiserror::Error;
 
 /// Current crate version.
@@ -333,7 +337,13 @@ pub fn render_svg(
         );
     }
 
-    document = document.node(SvgNode::new("g").attr("id", "excalidraw-content"));
+    let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
+    for normalized in &scene.elements {
+        for node in render_element(&normalized.element, options) {
+            content = content.child(node);
+        }
+    }
+    document = document.node(content);
     let svg = document.to_string()?;
     usvg::Tree::from_str(&svg, &usvg::Options::default())
         .map_err(|error| RenderError::InvalidSvg(error.to_string()))?;
@@ -417,6 +427,169 @@ fn handle_unsupported(
             element_type: element_type.to_owned(),
         }),
     }
+}
+
+fn render_element(element: &Element, options: &RenderOptions) -> Vec<SvgNode> {
+    match element {
+        Element::Rectangle(shape) => render_shape(shape, ShapeKind::Rectangle, options),
+        Element::Ellipse(shape) => render_shape(shape, ShapeKind::Ellipse, options),
+        Element::Diamond(shape) => render_shape(shape, ShapeKind::Diamond, options),
+        _ => Vec::new(),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ShapeKind {
+    Rectangle,
+    Ellipse,
+    Diamond,
+}
+
+fn render_shape(shape: &ShapeElement, kind: ShapeKind, options: &RenderOptions) -> Vec<SvgNode> {
+    match options.quality {
+        RenderQuality::Clean => vec![clean_shape_node(shape, kind)],
+        RenderQuality::Full | RenderQuality::FastSvg => rough_shape_nodes(shape, kind),
+    }
+}
+
+fn clean_shape_node(shape: &ShapeElement, kind: ShapeKind) -> SvgNode {
+    let base = &shape.base;
+    let node = match kind {
+        ShapeKind::Rectangle => SvgNode::new("rect")
+            .attr("x", base.x.to_string())
+            .attr("y", base.y.to_string())
+            .attr("width", base.width.to_string())
+            .attr("height", base.height.to_string()),
+        ShapeKind::Ellipse => SvgNode::new("ellipse")
+            .attr("cx", (base.x + base.width / 2.0).to_string())
+            .attr("cy", (base.y + base.height / 2.0).to_string())
+            .attr("rx", (base.width / 2.0).to_string())
+            .attr("ry", (base.height / 2.0).to_string()),
+        ShapeKind::Diamond => SvgNode::new("polygon").attr("points", diamond_points(base)),
+    };
+    apply_common_shape_attrs(node, base)
+}
+
+fn rough_shape_nodes(shape: &ShapeElement, kind: ShapeKind) -> Vec<SvgNode> {
+    let base = &shape.base;
+    let generator = Generator::new(Config::default());
+    let rough_options = rough_options(base);
+    let drawable = match kind {
+        ShapeKind::Rectangle => {
+            generator.rectangle(base.x, base.y, base.width, base.height, Some(rough_options))
+        }
+        ShapeKind::Ellipse => generator.ellipse(
+            base.x + base.width / 2.0,
+            base.y + base.height / 2.0,
+            base.width,
+            base.height,
+            Some(rough_options),
+        ),
+        ShapeKind::Diamond => generator.polygon(&diamond_point_array(base), Some(rough_options)),
+    };
+
+    let mut group = SvgNode::new("g");
+    if let Some(transform) = rotation_transform(base) {
+        group = group.attr("transform", transform);
+    }
+    for path in drawable_to_paths(&drawable) {
+        let mut node = SvgNode::new("path")
+            .attr("d", path.d)
+            .attr("stroke", path.stroke)
+            .attr("stroke-width", path.stroke_width.to_string())
+            .attr("fill", path.fill);
+        if let Some(opacity) = opacity_attr(base) {
+            node = node.attr("opacity", opacity);
+        }
+        group = group.child(node);
+    }
+    vec![group]
+}
+
+fn rough_options(base: &BaseElement) -> RoughOptions {
+    RoughOptions {
+        seed: Some(base.seed),
+        stroke: Some(base.stroke_color.clone()),
+        stroke_width: Some(base.stroke_width),
+        roughness: Some(base.roughness),
+        fill: fill_color(base),
+        fill_style: rough_fill_style(&base.fill_style),
+        fixed_decimal_place_digits: Some(2),
+        ..RoughOptions::default()
+    }
+}
+
+fn apply_common_shape_attrs(mut node: SvgNode, base: &BaseElement) -> SvgNode {
+    node = node
+        .attr("stroke", base.stroke_color.clone())
+        .attr("stroke-width", base.stroke_width.to_string())
+        .attr(
+            "fill",
+            fill_color(base).unwrap_or_else(|| "none".to_owned()),
+        );
+    if let Some(opacity) = opacity_attr(base) {
+        node = node.attr("opacity", opacity);
+    }
+    if let Some(transform) = rotation_transform(base) {
+        node = node.attr("transform", transform);
+    }
+    node
+}
+
+fn fill_color(base: &BaseElement) -> Option<String> {
+    if matches!(base.fill_style, ExcalidrawFillStyle::None) {
+        return None;
+    }
+    let value = base.background_color.trim();
+    if value.is_empty() || value.eq_ignore_ascii_case("transparent") {
+        None
+    } else {
+        Some(value.to_owned())
+    }
+}
+
+fn rough_fill_style(fill_style: &ExcalidrawFillStyle) -> Option<rough_rs::FillStyle> {
+    match fill_style {
+        ExcalidrawFillStyle::Hachure => Some(rough_rs::FillStyle::Hachure),
+        ExcalidrawFillStyle::Solid => Some(rough_rs::FillStyle::Solid),
+        ExcalidrawFillStyle::CrossHatch => Some(rough_rs::FillStyle::CrossHatch),
+        ExcalidrawFillStyle::Dots => Some(rough_rs::FillStyle::Dots),
+        ExcalidrawFillStyle::Dashed => Some(rough_rs::FillStyle::Dashed),
+        ExcalidrawFillStyle::ZigzagLine => Some(rough_rs::FillStyle::ZigzagLine),
+        ExcalidrawFillStyle::None | ExcalidrawFillStyle::Unknown => None,
+    }
+}
+
+fn opacity_attr(base: &BaseElement) -> Option<String> {
+    (base.opacity < 100.0).then(|| (base.opacity / 100.0).clamp(0.0, 1.0).to_string())
+}
+
+fn rotation_transform(base: &BaseElement) -> Option<String> {
+    if base.angle.abs() < f64::EPSILON {
+        return None;
+    }
+    let cx = base.x + base.width / 2.0;
+    let cy = base.y + base.height / 2.0;
+    Some(format!("rotate({} {} {})", base.angle.to_degrees(), cx, cy))
+}
+
+fn diamond_points(base: &BaseElement) -> String {
+    diamond_point_array(base)
+        .iter()
+        .map(|point| format!("{},{}", point[0], point[1]))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn diamond_point_array(base: &BaseElement) -> Vec<rough_rs::geometry::Point> {
+    let cx = base.x + base.width / 2.0;
+    let cy = base.y + base.height / 2.0;
+    vec![
+        [cx, base.y],
+        [base.x + base.width, cy],
+        [cx, base.y + base.height],
+        [base.x, cy],
+    ]
 }
 
 fn background_color(scene: &Scene, options: &RenderOptions) -> Option<Color> {
@@ -719,6 +892,91 @@ mod tests {
             Err("PNG rendering is not implemented yet".to_owned()),
             "png error",
         )
+    }
+
+    #[test]
+    fn full_quality_renders_basic_shapes_through_rough_paths() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"rectangle","id":"rect","x":0,"y":0,"width":40,"height":20,"seed":42,"backgroundColor":"#ffeeaa"},
+                    {"type":"ellipse","id":"ellipse","x":50,"y":0,"width":40,"height":20,"seed":43,"backgroundColor":"#aaddff"},
+                    {"type":"diamond","id":"diamond","x":100,"y":0,"width":40,"height":40,"seed":44,"backgroundColor":"#ddffaa"}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let options = RenderOptions {
+            background: BackgroundMode::Transparent,
+            quality: super::RenderQuality::Full,
+            ..RenderOptions::default()
+        };
+        let first = render_svg(&scene, &options)?;
+        let second = render_svg(&scene, &options)?;
+
+        ensure_eq(&first.value, second.value, "seeded rough output")?;
+        ensure(first.value.contains("<path"), "rough path output")?;
+        usvg::Tree::from_str(&first.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn clean_quality_uses_geometric_primitives() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"rectangle","id":"rect","x":0,"y":0,"width":40,"height":20},
+                    {"type":"ellipse","id":"ellipse","x":50,"y":0,"width":40,"height":20},
+                    {"type":"diamond","id":"diamond","x":100,"y":0,"width":40,"height":40}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                quality: super::RenderQuality::Clean,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(output.value.contains("<rect"), "clean rectangle")?;
+        ensure(output.value.contains("<ellipse"), "clean ellipse")?;
+        ensure(output.value.contains("<polygon"), "clean diamond")?;
+        ensure(!output.value.contains("<path"), "no rough paths")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn rough_modes_accept_excalidraw_fill_styles() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"rectangle","id":"hachure","x":0,"y":0,"width":20,"height":20,"fillStyle":"hachure","backgroundColor":"#ffeeaa","seed":1},
+                    {"type":"rectangle","id":"solid","x":30,"y":0,"width":20,"height":20,"fillStyle":"solid","backgroundColor":"#ffeeaa","seed":2},
+                    {"type":"rectangle","id":"cross","x":60,"y":0,"width":20,"height":20,"fillStyle":"cross-hatch","backgroundColor":"#ffeeaa","seed":3},
+                    {"type":"rectangle","id":"dots","x":90,"y":0,"width":20,"height":20,"fillStyle":"dots","backgroundColor":"#ffeeaa","seed":4},
+                    {"type":"rectangle","id":"dashed","x":120,"y":0,"width":20,"height":20,"fillStyle":"dashed","backgroundColor":"#ffeeaa","seed":5},
+                    {"type":"rectangle","id":"zigzag","x":150,"y":0,"width":20,"height":20,"fillStyle":"zigzag-line","backgroundColor":"#ffeeaa","seed":6},
+                    {"type":"rectangle","id":"none","x":180,"y":0,"width":20,"height":20,"fillStyle":"none","backgroundColor":"#ffeeaa","seed":7}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                quality: super::RenderQuality::FastSvg,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(output.value.contains("<path"), "rough fill style paths")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
     }
 
     fn ensure(value: bool, label: &str) -> Result<(), Box<dyn Error>> {
