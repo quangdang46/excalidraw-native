@@ -5,12 +5,14 @@
 
 pub mod color;
 pub mod defaults;
+pub mod normalize;
 pub mod parse;
 pub mod types;
 pub mod validate;
 
 pub use color::{parse_excalidraw_color, Color, ColorParseError};
 pub use defaults::font_family_css;
+pub use normalize::{normalize_file, NormalizedElement, Point, Rect, Scene, SceneWarning};
 pub use parse::{parse_reader, parse_slice, parse_str, ParseError};
 pub use types::{
     AppState, ArrowBinding, Arrowhead, BaseElement, BoundElement, Element, ExcalidrawFile,
