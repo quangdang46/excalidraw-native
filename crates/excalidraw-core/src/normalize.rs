@@ -6,8 +6,8 @@ use unicode_width::UnicodeWidthStr;
 
 use crate::{
     font_family_width_factor, parse_excalidraw_color, Arrowhead, BaseElement, Color, Element,
-    ExcalidrawFile, FrameElement, FreedrawElement, ImageElement, LinearElement, ShapeElement,
-    TextElement, UnsupportedElement,
+    ExcalidrawFile, FileData, FrameElement, FreedrawElement, ImageElement, LinearElement,
+    ShapeElement, TextElement, UnsupportedElement,
 };
 
 const FRACTIONAL_INDEX_DIGITS: &str =
@@ -135,6 +135,7 @@ pub struct Scene {
     pub content_bounds: Rect,
     pub export_bounds: Rect,
     pub warnings: Vec<SceneWarning>,
+    pub files: HashMap<String, FileData>,
 }
 
 #[derive(Debug, Clone)]
@@ -191,20 +192,25 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
     let mut content_bounds = Rect::empty();
 
     for (original_order, element) in file.elements.iter().cloned().enumerate() {
-        let Some(base) = element_base(&element) else {
-            continue;
-        };
-        if base.is_deleted {
+        let base = element_base(&element);
+        if let Some(base) = &base {
+            if base.is_deleted {
+                continue;
+            }
+        } else if matches!(&element, Element::Unknown { .. }) {
+            // Unknown elements may not have a parsed base; still process them.
+        } else {
             continue;
         }
-        let base_id = base.id.to_owned();
-        let frame_id = base.frame_id.to_owned();
+        let base_id = base.as_ref().map_or_else(String::new, |b| b.id.clone());
+        let frame_id = base.as_ref().and_then(|b| b.frame_id.clone());
         let container_id = text_element(&element).and_then(|text| text.container_id.to_owned());
-        if base.id.is_empty() {
-            warnings.push(SceneWarning::MissingElementId { original_order });
+        if let Some(base) = &base {
+            if base.id.is_empty() {
+                warnings.push(SceneWarning::MissingElementId { original_order });
+            }
+            index_bound_elements(base, &mut bound_texts, &mut bound_arrows);
         }
-
-        index_bound_elements(base, &mut bound_texts, &mut bound_arrows);
 
         let abs_points = element_abs_points(&element);
         let (bounds, rotated_bounds) = element_bounds(&element, abs_points.as_deref());
@@ -254,6 +260,7 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
         background_color,
         content_bounds,
         warnings,
+        files: file.files.clone(),
     }
 }
 
@@ -392,13 +399,6 @@ fn text_element(element: &Element) -> Option<&TextElement> {
     }
 }
 
-fn linear_element(element: &Element) -> Option<&LinearElement> {
-    match element {
-        Element::Arrow(linear) | Element::Line(linear) => Some(linear),
-        _ => None,
-    }
-}
-
 fn index_bound_elements(
     base: &BaseElement,
     bound_texts: &mut HashMap<String, Vec<String>>,
@@ -426,17 +426,29 @@ fn push_unique(values: &mut Vec<String>, value: String) {
 }
 
 fn element_abs_points(element: &Element) -> Option<Vec<Point>> {
-    let linear = linear_element(element)?;
-    Some(
-        linear
-            .points
-            .iter()
-            .map(|&[x, y]| Point {
-                x: linear.base.x + x,
-                y: linear.base.y + y,
-            })
-            .collect(),
-    )
+    match element {
+        Element::Arrow(linear) | Element::Line(linear) => Some(
+            linear
+                .points
+                .iter()
+                .map(|&[x, y]| Point {
+                    x: linear.base.x + x,
+                    y: linear.base.y + y,
+                })
+                .collect(),
+        ),
+        Element::Freedraw(freedraw) if !freedraw.points.is_empty() => Some(
+            freedraw
+                .points
+                .iter()
+                .map(|&[x, y]| Point {
+                    x: freedraw.base.x + x,
+                    y: freedraw.base.y + y,
+                })
+                .collect(),
+        ),
+        _ => None,
+    }
 }
 
 fn element_bounds(element: &Element, abs_points: Option<&[Point]>) -> (Rect, Rect) {

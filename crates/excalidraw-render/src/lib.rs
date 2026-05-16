@@ -7,8 +7,9 @@ use std::collections::HashSet;
 
 use excalidraw_core::{
     font_family_css, font_family_primary, font_family_width_factor, Arrowhead, BaseElement, Color,
-    Element, FillStyle as ExcalidrawFillStyle, LinearElement, NormalizedElement, Point, Rect,
-    Scene, ShapeElement, StrokeStyle, TextAlign, TextElement, VerticalAlign,
+    Element, FillStyle as ExcalidrawFillStyle, FrameElement, FreedrawElement, ImageElement,
+    LinearElement, NormalizedElement, Point, Rect, Scene, ShapeElement, StrokeStyle, TextAlign,
+    TextElement, UnsupportedElement, VerticalAlign,
 };
 use fontdb::{Database, Family, Query};
 use rough_rs::svg::drawable_to_paths;
@@ -106,6 +107,16 @@ pub enum RenderWarning {
     },
     TextSkipped {
         element_id: String,
+    },
+    MissingImageData {
+        element_id: String,
+    },
+    ImagePlaceholder {
+        element_id: String,
+    },
+    UnknownElementPlaceholder {
+        element_id: String,
+        element_type: String,
     },
 }
 
@@ -388,7 +399,7 @@ pub fn render_svg(
     scene: &Scene,
     options: &RenderOptions,
 ) -> Result<RenderOutput<String>, RenderError> {
-    let warnings = collect_policy_warnings(scene, options)?;
+    let mut warnings = collect_policy_warnings(scene, options)?;
     let fonts = FontRegistry::new();
     let view_box = scene.content_bounds.padded(options.padding.max(0.0));
     let mut document = SvgDocument::new_scaled(view_box, options.scale);
@@ -406,7 +417,11 @@ pub fn render_svg(
 
     let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
     for normalized in &scene.elements {
-        for node in render_element(normalized, scene, options, &fonts) {
+        let rendered = render_element(normalized, scene, options, &fonts, &mut warnings);
+        for def in rendered.defs {
+            document = document.def(def);
+        }
+        for node in rendered.nodes {
             content = content.child(node);
         }
     }
@@ -496,22 +511,57 @@ fn handle_unsupported(
     }
 }
 
+struct RenderedElement {
+    defs: Vec<SvgNode>,
+    nodes: Vec<SvgNode>,
+}
+
+fn nodes_only(nodes: Vec<SvgNode>) -> RenderedElement {
+    RenderedElement {
+        defs: Vec::new(),
+        nodes,
+    }
+}
+
 fn render_element(
     normalized: &NormalizedElement,
     scene: &Scene,
     options: &RenderOptions,
     fonts: &FontRegistry,
-) -> Vec<SvgNode> {
+    warnings: &mut Vec<RenderWarning>,
+) -> RenderedElement {
     match &normalized.element {
-        Element::Rectangle(shape) => render_shape(shape, ShapeKind::Rectangle, options),
-        Element::Ellipse(shape) => render_shape(shape, ShapeKind::Ellipse, options),
-        Element::Diamond(shape) => render_shape(shape, ShapeKind::Diamond, options),
-        Element::Line(linear) => render_linear(linear, normalized.abs_points.as_deref(), false),
-        Element::Arrow(linear) => render_linear(linear, normalized.abs_points.as_deref(), true),
+        Element::Rectangle(shape) => nodes_only(render_shape(shape, ShapeKind::Rectangle, options)),
+        Element::Ellipse(shape) => nodes_only(render_shape(shape, ShapeKind::Ellipse, options)),
+        Element::Diamond(shape) => nodes_only(render_shape(shape, ShapeKind::Diamond, options)),
+        Element::Line(linear) => nodes_only(render_linear(
+            linear,
+            normalized.abs_points.as_deref(),
+            false,
+        )),
+        Element::Arrow(linear) => nodes_only(render_linear(
+            linear,
+            normalized.abs_points.as_deref(),
+            true,
+        )),
         Element::Text(text) if options.text_policy == TextPolicy::SvgText => {
-            render_text(text, scene, fonts)
+            nodes_only(render_text(text, scene, fonts))
         }
-        _ => Vec::new(),
+        Element::Freedraw(freedraw) => {
+            nodes_only(render_freedraw(freedraw, normalized.abs_points.as_deref()))
+        }
+        Element::Image(image) => render_image(image, scene, options, warnings),
+        Element::Frame(frame) | Element::MagicFrame(frame) => nodes_only(render_frame(frame)),
+        Element::Embeddable(unsupported) | Element::Iframe(unsupported) => {
+            render_unsupported(unsupported, options, warnings)
+        }
+        Element::Unknown { element_type, raw } => {
+            render_unknown(element_type, raw, options, warnings)
+        }
+        _ => RenderedElement {
+            defs: Vec::new(),
+            nodes: Vec::new(),
+        },
     }
 }
 
@@ -695,6 +745,339 @@ fn text_lines(text: &str) -> Vec<String> {
     } else {
         lines
     }
+}
+
+// --- Freedraw rendering ---
+
+fn render_freedraw(freedraw: &FreedrawElement, abs_points: Option<&[Point]>) -> Vec<SvgNode> {
+    let points = match abs_points.filter(|p| p.len() >= 2) {
+        Some(p) => p,
+        None => return Vec::new(),
+    };
+
+    let style = RenderStyle::from_base(&freedraw.base);
+    let stroke_width = freedraw.base.stroke_width.max(1.0);
+
+    // Build a simplified stroke outline from points.
+    // For v0.1 we use a polyline with round line-join and line-cap.
+    let d = freedraw_path_data(points);
+
+    let mut path = SvgNode::new("path")
+        .attr("d", d)
+        .attr("stroke", style.stroke)
+        .attr("stroke-width", stroke_width.to_string())
+        .attr("fill", "none")
+        .attr("stroke-linecap", "round")
+        .attr("stroke-linejoin", "round");
+
+    if let Some(opacity) = &style.opacity {
+        path = path.attr("opacity", opacity);
+    }
+    if let Some(transform) = &style.transform {
+        path = path.attr("transform", transform);
+    }
+
+    vec![path]
+}
+
+fn freedraw_path_data(points: &[Point]) -> String {
+    let mut d = String::from("M ");
+    if let Some(first) = points.first() {
+        d.push_str(&format!("{} {}", first.x, first.y));
+    }
+    for point in &points[1..] {
+        d.push_str(&format!(" L {} {}", point.x, point.y));
+    }
+    d
+}
+
+// --- Image rendering ---
+
+fn render_image(
+    image: &ImageElement,
+    scene: &Scene,
+    options: &RenderOptions,
+    warnings: &mut Vec<RenderWarning>,
+) -> RenderedElement {
+    let data_url = resolve_image_data_url(image, scene);
+
+    match (data_url, options.image_policy) {
+        (Some(url), ImagePolicy::Embed | ImagePolicy::Placeholder) => {
+            render_image_embed(image, &url)
+        }
+        (None, ImagePolicy::Embed | ImagePolicy::Placeholder) => {
+            warnings.push(RenderWarning::MissingImageData {
+                element_id: image.base.id.clone(),
+            });
+            nodes_only(render_image_placeholder(image))
+        }
+        (_, ImagePolicy::Skip) => RenderedElement {
+            defs: Vec::new(),
+            nodes: Vec::new(),
+        },
+        (_, ImagePolicy::Error) => {
+            // This is already caught by collect_policy_warnings, but handle defensively
+            RenderedElement {
+                defs: Vec::new(),
+                nodes: Vec::new(),
+            }
+        }
+    }
+}
+
+fn resolve_image_data_url(image: &ImageElement, scene: &Scene) -> Option<String> {
+    if let Some(file_id) = &image.file_id {
+        if let Some(file_data) = scene.files.get(file_id) {
+            if !file_data.data_url.is_empty() {
+                return Some(file_data.data_url.clone());
+            }
+        }
+    }
+    None
+}
+
+fn render_image_embed(image: &ImageElement, data_url: &str) -> RenderedElement {
+    let base = &image.base;
+    let style = RenderStyle::from_base(base);
+
+    let mut img = SvgNode::new("image")
+        .attr("x", base.x.to_string())
+        .attr("y", base.y.to_string())
+        .attr("width", base.width.to_string())
+        .attr("height", base.height.to_string())
+        .attr("href", data_url.to_owned());
+
+    if let Some(opacity) = &style.opacity {
+        img = img.attr("opacity", opacity);
+    }
+
+    // Handle scale flips
+    if let Some([sx, sy]) = image.scale {
+        if sx < 0.0 || sy < 0.0 {
+            let tx = if sx < 0.0 {
+                base.x + base.width
+            } else {
+                base.x
+            };
+            let ty = if sy < 0.0 {
+                base.y + base.height
+            } else {
+                base.y
+            };
+            img = img.attr(
+                "transform",
+                format!(
+                    "translate({tx} {ty}) scale({sx} {sy})",
+                    sx = sx.abs(),
+                    sy = sy.abs(),
+                ),
+            );
+        }
+    }
+
+    // Handle crop via clipPath
+    let mut clip_defs = Vec::new();
+    if let Some(crop) = &image.crop {
+        if crop.width > 0.0 && crop.height > 0.0 {
+            let clip_id = format!("crop-{}", sanitize_id(&base.id));
+            let clip_rect = SvgNode::new("rect")
+                .attr("x", crop.x.to_string())
+                .attr("y", crop.y.to_string())
+                .attr("width", crop.width.to_string())
+                .attr("height", crop.height.to_string());
+            let clip_path = SvgNode::new("clipPath")
+                .attr("id", clip_id.clone())
+                .child(clip_rect);
+            clip_defs.push(clip_path);
+            img = img.attr("clip-path", format!("url(#{clip_id})"));
+        }
+    }
+    let mut nodes = Vec::new();
+
+    if let Some(transform) = &style.transform {
+        img = img.attr("transform", transform);
+    }
+
+    nodes.push(img);
+    RenderedElement {
+        defs: clip_defs,
+        nodes,
+    }
+}
+
+fn render_image_placeholder(image: &ImageElement) -> Vec<SvgNode> {
+    let base = &image.base;
+    let rect = SvgNode::new("rect")
+        .attr("x", base.x.to_string())
+        .attr("y", base.y.to_string())
+        .attr("width", base.width.to_string())
+        .attr("height", base.height.to_string())
+        .attr("fill", "#f0f0f0")
+        .attr("stroke", "#cccccc")
+        .attr("stroke-width", "1")
+        .attr("stroke-dasharray", "4 4");
+
+    let label_x = base.x + base.width / 2.0;
+    let label_y = base.y + base.height / 2.0;
+    let label = SvgNode::new("text")
+        .attr("x", label_x.to_string())
+        .attr("y", label_y.to_string())
+        .attr("text-anchor", "middle")
+        .attr("dominant-baseline", "central")
+        .attr("fill", "#999999")
+        .attr("font-size", "12")
+        .text("no image");
+
+    vec![rect, label]
+}
+
+// --- Frame rendering ---
+
+fn render_frame(frame: &FrameElement) -> Vec<SvgNode> {
+    let base = &frame.base;
+    let mut group = SvgNode::new("g").attr("data-frame", base.id.clone());
+
+    // Frame border
+    let border = SvgNode::new("rect")
+        .attr("x", base.x.to_string())
+        .attr("y", base.y.to_string())
+        .attr("width", base.width.to_string())
+        .attr("height", base.height.to_string())
+        .attr("fill", "none")
+        .attr("stroke", "#adb5bd")
+        .attr("stroke-width", "1")
+        .attr("stroke-dasharray", "6 4")
+        .attr("rx", "2")
+        .attr("ry", "2");
+    group = group.child(border);
+
+    // Frame label
+    if let Some(name) = frame.name.as_deref().filter(|n| !n.is_empty()) {
+        let label = SvgNode::new("text")
+            .attr("x", base.x.to_string())
+            .attr("y", (base.y - 6.0).to_string())
+            .attr("fill", "#868e96")
+            .attr("font-size", "14")
+            .attr("dominant-baseline", "auto")
+            .text(name.to_owned());
+        group = group.child(label);
+    }
+
+    // Collapsed indicator
+    if frame.is_collapsed.unwrap_or(false) {
+        let indicator = SvgNode::new("text")
+            .attr("x", (base.x + base.width / 2.0).to_string())
+            .attr("y", (base.y + base.height / 2.0).to_string())
+            .attr("text-anchor", "middle")
+            .attr("dominant-baseline", "central")
+            .attr("fill", "#adb5bd")
+            .attr("font-size", "12")
+            .text("collapsed");
+        group = group.child(indicator);
+    }
+
+    vec![group]
+}
+
+// --- Unsupported / Unknown element rendering ---
+
+fn render_unsupported(
+    element: &UnsupportedElement,
+    options: &RenderOptions,
+    warnings: &mut Vec<RenderWarning>,
+) -> RenderedElement {
+    if options.unsupported == UnsupportedElementMode::Skip {
+        return RenderedElement {
+            defs: Vec::new(),
+            nodes: Vec::new(),
+        };
+    }
+
+    let base = &element.base;
+    let width = base.width.max(40.0);
+    let height = base.height.max(30.0);
+
+    warnings.push(RenderWarning::UnsupportedElementPlaceholder {
+        element_id: base.id.clone(),
+        element_type: "unsupported".to_owned(),
+    });
+
+    nodes_only(placeholder_group(
+        &base.id,
+        base.x,
+        base.y,
+        width,
+        height,
+        "unsupported",
+    ))
+}
+
+fn render_unknown(
+    element_type: &str,
+    raw: &serde_json::Value,
+    options: &RenderOptions,
+    warnings: &mut Vec<RenderWarning>,
+) -> RenderedElement {
+    if options.unsupported == UnsupportedElementMode::Skip {
+        return RenderedElement {
+            defs: Vec::new(),
+            nodes: Vec::new(),
+        };
+    }
+
+    // Try to extract position info from raw JSON
+    let x = raw.get("x").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let y = raw.get("y").and_then(|v| v.as_f64()).unwrap_or(0.0);
+    let width = raw
+        .get("width")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(40.0)
+        .max(40.0);
+    let height = raw
+        .get("height")
+        .and_then(|v| v.as_f64())
+        .unwrap_or(30.0)
+        .max(30.0);
+    let id = raw.get("id").and_then(|v| v.as_str()).unwrap_or("unknown");
+
+    warnings.push(RenderWarning::UnknownElementPlaceholder {
+        element_id: id.to_owned(),
+        element_type: element_type.to_owned(),
+    });
+
+    nodes_only(placeholder_group(id, x, y, width, height, element_type))
+}
+
+fn placeholder_group(id: &str, x: f64, y: f64, w: f64, h: f64, label: &str) -> Vec<SvgNode> {
+    let rect = SvgNode::new("rect")
+        .attr("x", x.to_string())
+        .attr("y", y.to_string())
+        .attr("width", w.to_string())
+        .attr("height", h.to_string())
+        .attr("fill", "#fff3bf")
+        .attr("stroke", "#fcc419")
+        .attr("stroke-width", "1")
+        .attr("stroke-dasharray", "4 4")
+        .attr("rx", "2")
+        .attr("ry", "2");
+
+    let label_x = x + w / 2.0;
+    let label_y = y + h / 2.0;
+    let text = SvgNode::new("text")
+        .attr("x", label_x.to_string())
+        .attr("y", label_y.to_string())
+        .attr("text-anchor", "middle")
+        .attr("dominant-baseline", "central")
+        .attr("fill", "#e67700")
+        .attr("font-size", "11")
+        .text(label.to_owned());
+
+    let group = SvgNode::new("g")
+        .attr("data-placeholder", id)
+        .child(rect)
+        .child(text);
+
+    vec![group]
 }
 
 fn clean_shape_node(shape: &ShapeElement, kind: ShapeKind) -> SvgNode {
@@ -1753,6 +2136,232 @@ mod tests {
         ensure(output.value.contains("<circle"), "circle heads")?;
         ensure(output.value.contains("fill=\"none\""), "outline head")?;
         ensure(output.value.matches("<path").count() >= 5, "path heads")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_freedraw_as_polyline() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"freedraw","id":"fd","x":10,"y":20,"width":50,"height":30,
+                    "points":[[0,0],[10,5],[30,0],[50,10]],
+                    "pressures":[0.2,0.5,0.8,0.3],"simulatePressure":true}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(output.value.contains("<path"), "freedraw path")?;
+        ensure(
+            output.value.contains("stroke-linecap=\"round\""),
+            "round cap",
+        )?;
+        ensure(
+            output.value.contains("stroke-linejoin=\"round\""),
+            "round join",
+        )?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_freedraw_with_simulated_pressure() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"freedraw","id":"fd2","x":0,"y":0,"width":20,"height":20,
+                    "points":[[0,0],[10,10],[20,0]],
+                    "pressures":[0.1,0.9,0.1],"simulatePressure":false}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(output.value.contains("<path"), "freedraw pressure path")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_image_with_data_url() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"image","id":"img1","x":0,"y":0,"width":100,"height":80,
+                    "fileId":"file123","status":"saved"}],
+                "files":{"file123":{"id":"file123","mimeType":"image/png",
+                    "dataURL":"data:image/png;base64,iVBOR"}}
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(output.value.contains("<image"), "image element")?;
+        ensure(
+            output.value.contains("data:image/png;base64,iVBOR"),
+            "data url",
+        )?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_image_placeholder_when_missing_data() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"image","id":"img2","x":10,"y":20,"width":100,"height":80,
+                    "fileId":"missing","status":"saved"}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(
+            output.warnings.iter().any(|w| {
+                matches!(
+                    w,
+                    RenderWarning::MissingImageData { element_id } if element_id == "img2"
+                )
+            }),
+            "missing image warning",
+        )?;
+        ensure(output.value.contains("no image"), "placeholder text")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_image_with_crop_and_scale_flips() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"image","id":"img3","x":0,"y":0,"width":100,"height":80,
+                    "fileId":"f1","scale":[-1,1],
+                    "crop":{"x":10,"y":10,"width":80,"height":60,
+                            "naturalWidth":100,"naturalHeight":80}}],
+                "files":{"f1":{"id":"f1","mimeType":"image/png",
+                    "dataURL":"data:image/png;base64,iVBOR"}}
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(output.value.contains("clipPath"), "crop clip path")?;
+        ensure(output.value.contains("clip-path"), "clip ref")?;
+        ensure(output.value.contains("scale("), "scale flip")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_frame_with_label_and_border() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"frame","id":"fr1","x":0,"y":0,"width":200,"height":150,
+                    "name":"My Frame"}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(output.value.contains("data-frame"), "frame group")?;
+        ensure(output.value.contains("My Frame"), "frame label")?;
+        ensure(
+            output.value.contains("stroke-dasharray"),
+            "frame dashed border",
+        )?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_collapsed_frame() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"frame","id":"fr2","x":0,"y":0,"width":200,"height":150,
+                    "name":"Collapsed","isCollapsed":true}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(output.value.contains("collapsed"), "collapsed indicator")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_magicframe_as_frame() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"magicframe","id":"mf1","x":0,"y":0,"width":200,"height":150,
+                    "name":"Magic"}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(output.value.contains("Magic"), "magicframe label")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_unsupported_elements_as_placeholders() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"embeddable","id":"emb1","x":0,"y":0,"width":200,"height":100},
+                    {"type":"iframe","id":"ifr1","x":0,"y":120,"width":200,"height":100}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(
+            output.value.contains("data-placeholder"),
+            "placeholder attribute",
+        )?;
+        ensure(output.value.contains("unsupported"), "placeholder label")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_unknown_elements_as_placeholders() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"customWidget","id":"cw1","x":50,"y":50,"width":120,"height":80}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        ensure(
+            output.warnings.iter().any(|w| matches!(
+                w,
+                RenderWarning::UnknownElementPlaceholder { element_type, .. } if element_type == "customWidget"
+            )),
+            "unknown element warning",
+        )?;
+        ensure(
+            output.value.contains("customWidget"),
+            "unknown element label",
+        )?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn skips_unsupported_and_unknown_when_mode_is_skip() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"embeddable","id":"emb2","x":0,"y":0,"width":100,"height":100},
+                    {"type":"iframe","id":"ifr2","x":120,"y":0,"width":100,"height":100},
+                    {"type":"customWidget","id":"cw2","x":240,"y":0,"width":100,"height":100}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let opts = RenderOptions {
+            unsupported: UnsupportedElementMode::Skip,
+            ..RenderOptions::default()
+        };
+        let output = render_svg(&scene, &opts)?;
+        ensure(
+            !output.value.contains("data-placeholder"),
+            "no placeholders when skip",
+        )?;
         usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
         Ok(())
     }
