@@ -7,6 +7,7 @@ use std::collections::HashSet;
 
 use excalidraw_core::{
     BaseElement, Color, Element, FillStyle as ExcalidrawFillStyle, Rect, Scene, ShapeElement,
+    StrokeStyle,
 };
 use rough_rs::svg::drawable_to_paths;
 use rough_rs::{Config, Generator, Options as RoughOptions};
@@ -454,12 +455,21 @@ fn render_shape(shape: &ShapeElement, kind: ShapeKind, options: &RenderOptions) 
 
 fn clean_shape_node(shape: &ShapeElement, kind: ShapeKind) -> SvgNode {
     let base = &shape.base;
-    let node = match kind {
-        ShapeKind::Rectangle => SvgNode::new("rect")
-            .attr("x", base.x.to_string())
-            .attr("y", base.y.to_string())
-            .attr("width", base.width.to_string())
-            .attr("height", base.height.to_string()),
+    let style = RenderStyle::from_base(base);
+    let mut node = match kind {
+        ShapeKind::Rectangle => {
+            let mut rect = SvgNode::new("rect")
+                .attr("x", base.x.to_string())
+                .attr("y", base.y.to_string())
+                .attr("width", base.width.to_string())
+                .attr("height", base.height.to_string());
+            if let Some(radius) = style.corner_radius {
+                rect = rect
+                    .attr("rx", radius.to_string())
+                    .attr("ry", radius.to_string());
+            }
+            rect
+        }
         ShapeKind::Ellipse => SvgNode::new("ellipse")
             .attr("cx", (base.x + base.width / 2.0).to_string())
             .attr("cy", (base.y + base.height / 2.0).to_string())
@@ -467,13 +477,15 @@ fn clean_shape_node(shape: &ShapeElement, kind: ShapeKind) -> SvgNode {
             .attr("ry", (base.height / 2.0).to_string()),
         ShapeKind::Diamond => SvgNode::new("polygon").attr("points", diamond_points(base)),
     };
-    apply_common_shape_attrs(node, base)
+    style.apply_to_node(&mut node);
+    node
 }
 
 fn rough_shape_nodes(shape: &ShapeElement, kind: ShapeKind) -> Vec<SvgNode> {
     let base = &shape.base;
+    let style = RenderStyle::from_base(base);
     let generator = Generator::new(Config::default());
-    let rough_options = rough_options(base);
+    let rough_options = style.rough_options(base);
     let drawable = match kind {
         ShapeKind::Rectangle => {
             generator.rectangle(base.x, base.y, base.width, base.height, Some(rough_options))
@@ -489,8 +501,11 @@ fn rough_shape_nodes(shape: &ShapeElement, kind: ShapeKind) -> Vec<SvgNode> {
     };
 
     let mut group = SvgNode::new("g");
-    if let Some(transform) = rotation_transform(base) {
+    if let Some(transform) = &style.transform {
         group = group.attr("transform", transform);
+    }
+    if let Some(opacity) = &style.opacity {
+        group = group.attr("opacity", opacity);
     }
     for path in drawable_to_paths(&drawable) {
         let mut node = SvgNode::new("path")
@@ -498,42 +513,81 @@ fn rough_shape_nodes(shape: &ShapeElement, kind: ShapeKind) -> Vec<SvgNode> {
             .attr("stroke", path.stroke)
             .attr("stroke-width", path.stroke_width.to_string())
             .attr("fill", path.fill);
-        if let Some(opacity) = opacity_attr(base) {
-            node = node.attr("opacity", opacity);
+        if let Some(dasharray) = &style.stroke_dasharray {
+            node = node.attr("stroke-dasharray", dasharray);
         }
         group = group.child(node);
     }
     vec![group]
 }
 
-fn rough_options(base: &BaseElement) -> RoughOptions {
-    RoughOptions {
-        seed: Some(base.seed),
-        stroke: Some(base.stroke_color.clone()),
-        stroke_width: Some(base.stroke_width),
-        roughness: Some(base.roughness),
-        fill: fill_color(base),
-        fill_style: rough_fill_style(&base.fill_style),
-        fixed_decimal_place_digits: Some(2),
-        ..RoughOptions::default()
-    }
+#[derive(Debug, Clone, PartialEq)]
+struct RenderStyle {
+    stroke: String,
+    fill: String,
+    rough_fill: Option<String>,
+    rough_fill_style: Option<rough_rs::FillStyle>,
+    stroke_width: f64,
+    stroke_dasharray: Option<String>,
+    stroke_dash: Option<Vec<f64>>,
+    opacity: Option<String>,
+    transform: Option<String>,
+    corner_radius: Option<f64>,
 }
 
-fn apply_common_shape_attrs(mut node: SvgNode, base: &BaseElement) -> SvgNode {
-    node = node
-        .attr("stroke", base.stroke_color.clone())
-        .attr("stroke-width", base.stroke_width.to_string())
-        .attr(
-            "fill",
-            fill_color(base).unwrap_or_else(|| "none".to_owned()),
-        );
-    if let Some(opacity) = opacity_attr(base) {
-        node = node.attr("opacity", opacity);
+impl RenderStyle {
+    fn from_base(base: &BaseElement) -> Self {
+        let stroke_width = base.stroke_width.max(0.0);
+        let stroke_dash = stroke_dash_array(&base.stroke_style, stroke_width);
+        Self {
+            stroke: base.stroke_color.clone(),
+            fill: fill_color(base).unwrap_or_else(|| "none".to_owned()),
+            rough_fill: fill_color(base),
+            rough_fill_style: rough_fill_style(&base.fill_style),
+            stroke_width,
+            stroke_dasharray: stroke_dash.as_ref().map(|values| {
+                values
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            }),
+            stroke_dash,
+            opacity: opacity_attr(base),
+            transform: rotation_transform(base),
+            corner_radius: rectangle_corner_radius(base),
+        }
     }
-    if let Some(transform) = rotation_transform(base) {
-        node = node.attr("transform", transform);
+
+    fn apply_to_node(&self, node: &mut SvgNode) {
+        *node = std::mem::replace(node, SvgNode::new("g"))
+            .attr("stroke", self.stroke.clone())
+            .attr("stroke-width", self.stroke_width.to_string())
+            .attr("fill", self.fill.clone());
+        if let Some(dasharray) = &self.stroke_dasharray {
+            *node = std::mem::replace(node, SvgNode::new("g")).attr("stroke-dasharray", dasharray);
+        }
+        if let Some(opacity) = &self.opacity {
+            *node = std::mem::replace(node, SvgNode::new("g")).attr("opacity", opacity);
+        }
+        if let Some(transform) = &self.transform {
+            *node = std::mem::replace(node, SvgNode::new("g")).attr("transform", transform);
+        }
     }
-    node
+
+    fn rough_options(&self, base: &BaseElement) -> RoughOptions {
+        RoughOptions {
+            seed: Some(base.seed),
+            stroke: Some(self.stroke.clone()),
+            stroke_width: Some(self.stroke_width),
+            roughness: Some(base.roughness),
+            fill: self.rough_fill.clone(),
+            fill_style: self.rough_fill_style,
+            stroke_line_dash: self.stroke_dash.clone(),
+            fixed_decimal_place_digits: Some(2),
+            ..RoughOptions::default()
+        }
+    }
 }
 
 fn fill_color(base: &BaseElement) -> Option<String> {
@@ -558,6 +612,19 @@ fn rough_fill_style(fill_style: &ExcalidrawFillStyle) -> Option<rough_rs::FillSt
         ExcalidrawFillStyle::ZigzagLine => Some(rough_rs::FillStyle::ZigzagLine),
         ExcalidrawFillStyle::None | ExcalidrawFillStyle::Unknown => None,
     }
+}
+
+fn stroke_dash_array(stroke_style: &StrokeStyle, stroke_width: f64) -> Option<Vec<f64>> {
+    match stroke_style {
+        StrokeStyle::Dashed => Some(vec![stroke_width * 4.0, stroke_width * 4.0]),
+        StrokeStyle::Dotted => Some(vec![stroke_width, stroke_width * 2.0]),
+        StrokeStyle::Solid | StrokeStyle::Unknown => None,
+    }
+}
+
+fn rectangle_corner_radius(base: &BaseElement) -> Option<f64> {
+    base.roundness.as_ref()?;
+    Some((base.width.abs().min(base.height.abs()) * 0.25).max(0.0))
 }
 
 fn opacity_attr(base: &BaseElement) -> Option<String> {
@@ -976,6 +1043,62 @@ mod tests {
 
         ensure(output.value.contains("<path"), "rough fill style paths")?;
         usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn shared_style_serializes_dash_opacity_roundness_and_rotation() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {
+                        "type":"rectangle",
+                        "id":"styled",
+                        "x":10,
+                        "y":20,
+                        "width":40,
+                        "height":20,
+                        "angle":1.5707963267948966,
+                        "opacity":50,
+                        "strokeWidth":3,
+                        "strokeStyle":"dashed",
+                        "roundness":{"type":3},
+                        "backgroundColor":"#abcdef"
+                    }
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let clean = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                quality: super::RenderQuality::Clean,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(clean.value.contains("stroke-dasharray=\"12 12\""), "dash")?;
+        ensure(clean.value.contains("opacity=\"0.5\""), "opacity")?;
+        ensure(clean.value.contains("rx=\"5\""), "roundness")?;
+        ensure(
+            clean.value.contains("transform=\"rotate(90 30 30)\""),
+            "rotation",
+        )?;
+
+        let rough = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                quality: super::RenderQuality::Full,
+                ..RenderOptions::default()
+            },
+        )?;
+        ensure(
+            rough.value.contains("stroke-dasharray=\"12 12\""),
+            "rough dash",
+        )?;
+        ensure(rough.value.contains("opacity=\"0.5\""), "rough opacity")?;
         Ok(())
     }
 
