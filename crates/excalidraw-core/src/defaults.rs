@@ -73,6 +73,32 @@ pub fn font_family_css(family: u32) -> &'static str {
     }
 }
 
+/// Primary font name used for registration and renderer lookup.
+#[must_use]
+pub fn font_family_primary(family: u32) -> &'static str {
+    match family {
+        1 => "Virgil",
+        2 => "Helvetica",
+        3 => "Cascadia Code",
+        5 => "Excalifont",
+        6 => "Nunito",
+        7 => "Lilita One",
+        8 => "Comic Shanns",
+        _ => "Excalifont",
+    }
+}
+
+/// Average advance factor used for deterministic fallback text measurement.
+#[must_use]
+pub fn font_family_width_factor(family: u32) -> f64 {
+    match family {
+        2 | 6 => 0.55,
+        3 => 0.62,
+        7 => 0.66,
+        _ => 0.6,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::error::Error;
@@ -152,6 +178,19 @@ mod tests {
             "Excalifont, cursive",
             "unknown family fallback",
         )?;
+        Ok(())
+    }
+
+    #[test]
+    fn font_family_registration_and_measurement_mapping_is_stable() -> Result<(), Box<dyn Error>> {
+        ensure_eq(&super::font_family_primary(3), "Cascadia Code", "primary")?;
+        ensure_eq(
+            &super::font_family_primary(99),
+            "Excalifont",
+            "fallback primary",
+        )?;
+        ensure_eq(&super::font_family_width_factor(3), 0.62_f64, "mono width")?;
+        ensure_eq(&super::font_family_width_factor(2), 0.55_f64, "sans width")?;
         Ok(())
     }
 

@@ -11,4 +11,4 @@ description = "Core Excalidraw parsing, validation, and normalization types for 
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-
+unicode-width.workspace = true

@@ -2,9 +2,12 @@
 
 use std::collections::HashMap;
 
+use unicode_width::UnicodeWidthStr;
+
 use crate::{
-    parse_excalidraw_color, Arrowhead, BaseElement, Color, Element, ExcalidrawFile, FrameElement,
-    FreedrawElement, ImageElement, LinearElement, ShapeElement, TextElement, UnsupportedElement,
+    font_family_width_factor, parse_excalidraw_color, Arrowhead, BaseElement, Color, Element,
+    ExcalidrawFile, FrameElement, FreedrawElement, ImageElement, LinearElement, ShapeElement,
+    TextElement, UnsupportedElement,
 };
 
 const FRACTIONAL_INDEX_DIGITS: &str =
@@ -12,7 +15,6 @@ const FRACTIONAL_INDEX_DIGITS: &str =
 const MIN_FRACTIONAL_INDEX: &str = "A00000000000000000000000000";
 const EXPORT_PADDING: f64 = 16.0;
 const ROUGHNESS_BOUNDS_MARGIN: f64 = 1.5;
-const TEXT_WIDTH_FACTOR: f64 = 0.62;
 const FRAME_LABEL_HEIGHT: f64 = 32.0;
 const FRAME_LABEL_HORIZONTAL_PADDING: f64 = 16.0;
 const UNSUPPORTED_PLACEHOLDER_MIN_SIZE: f64 = 24.0;
@@ -188,51 +190,54 @@ pub fn normalize_file(file: &ExcalidrawFile) -> Scene {
     let mut bound_arrows: HashMap<String, Vec<String>> = HashMap::new();
     let mut content_bounds = Rect::empty();
 
-    for (original_order, element) in file.elements.iter().enumerate() {
-        let Some(base) = element_base(element) else {
+    for (original_order, element) in file.elements.iter().cloned().enumerate() {
+        let Some(base) = element_base(&element) else {
             continue;
         };
         if base.is_deleted {
             continue;
         }
+        let base_id = base.id.to_owned();
+        let frame_id = base.frame_id.to_owned();
+        let container_id = text_element(&element).and_then(|text| text.container_id.to_owned());
         if base.id.is_empty() {
             warnings.push(SceneWarning::MissingElementId { original_order });
         }
 
         index_bound_elements(base, &mut bound_texts, &mut bound_arrows);
 
-        let abs_points = element_abs_points(element);
-        let (bounds, rotated_bounds) = element_bounds(element, abs_points.as_deref());
+        let abs_points = element_abs_points(&element);
+        let (bounds, rotated_bounds) = element_bounds(&element, abs_points.as_deref());
         content_bounds = if elements.is_empty() {
             rotated_bounds
         } else {
             content_bounds.union(rotated_bounds)
         };
 
-        if let Some(frame_id) = &base.frame_id {
+        if let Some(frame_id) = &frame_id {
             frame_children
-                .entry(frame_id.clone())
+                .entry(frame_id.to_owned())
                 .or_default()
-                .push(base.id.clone());
+                .push(base_id.to_owned());
         }
-        if let Some(text) = text_element(element) {
+        if let Some(text) = text_element(&element) {
             if let Some(container_id) = &text.container_id {
                 push_unique(
-                    bound_texts.entry(container_id.clone()).or_default(),
-                    text.base.id.clone(),
+                    bound_texts.entry(container_id.to_owned()).or_default(),
+                    text.base.id.to_owned(),
                 );
             }
         }
 
         elements.push(NormalizedElement {
-            element: element.clone(),
+            element,
             original_order,
             render_order: elements.len(),
             abs_points,
             bounds,
             rotated_bounds,
-            container_id: text_element(element).and_then(|text| text.container_id.clone()),
-            frame_id: base.frame_id.clone(),
+            container_id,
+            frame_id,
         });
     }
 
@@ -266,7 +271,7 @@ fn build_id_map(elements: &[NormalizedElement]) -> HashMap<String, usize> {
             continue;
         };
         if !base.id.is_empty() {
-            id_map.insert(base.id.clone(), index);
+            id_map.insert(base.id.to_owned(), index);
         }
     }
     id_map
@@ -291,7 +296,7 @@ fn apply_z_order(elements: &mut [NormalizedElement], warnings: &mut Vec<SceneWar
         let Some(index) = &base.index else {
             warnings.push(SceneWarning::ZOrderFallback {
                 reason: ZOrderFallbackReason::MissingIndex {
-                    element_id: base.id.clone(),
+                    element_id: base.id.to_owned(),
                 },
             });
             apply_original_order(elements);
@@ -300,8 +305,8 @@ fn apply_z_order(elements: &mut [NormalizedElement], warnings: &mut Vec<SceneWar
         if !is_valid_fractional_index(index) {
             warnings.push(SceneWarning::ZOrderFallback {
                 reason: ZOrderFallbackReason::InvalidIndex {
-                    element_id: base.id.clone(),
-                    value: index.clone(),
+                    element_id: base.id.to_owned(),
+                    value: index.to_owned(),
                 },
             });
             apply_original_order(elements);
@@ -310,7 +315,7 @@ fn apply_z_order(elements: &mut [NormalizedElement], warnings: &mut Vec<SceneWar
         if !seen.insert(index.as_str()) {
             warnings.push(SceneWarning::ZOrderFallback {
                 reason: ZOrderFallbackReason::DuplicateIndex {
-                    value: index.clone(),
+                    value: index.to_owned(),
                 },
             });
             apply_original_order(elements);
@@ -402,12 +407,12 @@ fn index_bound_elements(
     for bound in &base.bound_elements {
         match bound.element_type.as_str() {
             "text" => push_unique(
-                bound_texts.entry(base.id.clone()).or_default(),
-                bound.id.clone(),
+                bound_texts.entry(base.id.to_owned()).or_default(),
+                bound.id.to_owned(),
             ),
             "arrow" => push_unique(
-                bound_arrows.entry(base.id.clone()).or_default(),
-                bound.id.clone(),
+                bound_arrows.entry(base.id.to_owned()).or_default(),
+                bound.id.to_owned(),
             ),
             _ => {}
         }
@@ -528,8 +533,8 @@ fn image_bounds(image: &ImageElement) -> Rect {
 fn frame_bounds(frame: &FrameElement) -> Rect {
     let mut bounds = base_rect(&frame.base).padded(element_padding(&frame.base));
     if let Some(name) = frame.name.as_deref().filter(|name| !name.is_empty()) {
-        let label_width =
-            name.chars().count() as f64 * 14.0 * TEXT_WIDTH_FACTOR + FRAME_LABEL_HORIZONTAL_PADDING;
+        let label_width = UnicodeWidthStr::width(name) as f64 * 14.0 * font_family_width_factor(2)
+            + FRAME_LABEL_HORIZONTAL_PADDING;
         let label_bounds = Rect {
             x: frame.base.x,
             y: frame.base.y - FRAME_LABEL_HEIGHT,
@@ -579,18 +584,28 @@ fn arrowhead_bounds(point: Point, base: &BaseElement, arrowhead: &Option<Arrowhe
 }
 
 fn measure_text(text: &TextElement) -> Rect {
-    let line_count = text.text.lines().count().max(1) as f64;
+    let lines = text_lines(&text.text);
+    let line_count = lines.len() as f64;
     let max_chars = text
         .text
-        .lines()
-        .map(|line| line.chars().count())
+        .split('\n')
+        .map(UnicodeWidthStr::width)
         .max()
         .unwrap_or_default() as f64;
     Rect {
         x: text.base.x,
         y: text.base.y,
-        width: max_chars * text.font_size * TEXT_WIDTH_FACTOR,
+        width: max_chars * text.font_size * font_family_width_factor(text.font_family),
         height: line_count * text.font_size * text.line_height,
+    }
+}
+
+fn text_lines(text: &str) -> Vec<&str> {
+    let lines: Vec<&str> = text.split('\n').collect();
+    if lines.is_empty() {
+        vec![""]
+    } else {
+        lines
     }
 }
 
@@ -815,7 +830,7 @@ mod tests {
             Rect {
                 x: -2.5,
                 y: -2.5,
-                width: 29.8,
+                width: 29.0,
                 height: 45.0,
             },
             "text bounds",

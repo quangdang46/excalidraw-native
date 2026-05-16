@@ -6,12 +6,15 @@
 use std::collections::HashSet;
 
 use excalidraw_core::{
-    Arrowhead, BaseElement, Color, Element, FillStyle as ExcalidrawFillStyle, LinearElement,
-    NormalizedElement, Point, Rect, Scene, ShapeElement, StrokeStyle,
+    font_family_css, font_family_primary, font_family_width_factor, Arrowhead, BaseElement, Color,
+    Element, FillStyle as ExcalidrawFillStyle, LinearElement, NormalizedElement, Point, Rect,
+    Scene, ShapeElement, StrokeStyle, TextAlign, TextElement, VerticalAlign,
 };
+use fontdb::{Database, Family, Query};
 use rough_rs::svg::drawable_to_paths;
 use rough_rs::{Config, Generator, Options as RoughOptions};
 use thiserror::Error;
+use unicode_width::UnicodeWidthStr;
 
 /// Current crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -218,6 +221,68 @@ pub struct SvgDocument {
     nodes: Vec<SvgNode>,
 }
 
+#[derive(Debug)]
+pub struct FontRegistry {
+    database: Database,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct MeasuredText {
+    pub width: f64,
+    pub height: f64,
+    pub line_height: f64,
+    pub lines: Vec<String>,
+}
+
+impl Default for FontRegistry {
+    fn default() -> Self {
+        let mut database = Database::new();
+        database.load_system_fonts();
+        Self { database }
+    }
+}
+
+impl FontRegistry {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    #[must_use]
+    pub fn resolve_family(&self, family: u32) -> String {
+        let primary = font_family_primary(family);
+        let query = Query {
+            families: &[Family::Name(primary)],
+            ..Query::default()
+        };
+        if self.database.query(&query).is_some() {
+            format!("registered:{primary}")
+        } else {
+            format!("fallback:{primary}")
+        }
+    }
+
+    #[must_use]
+    pub fn measure_text(&self, text: &TextElement) -> MeasuredText {
+        let lines = text_lines(&text.text);
+        let width_factor = font_family_width_factor(text.font_family);
+        let width = lines
+            .iter()
+            .map(|line| UnicodeWidthStr::width(line.as_str()) as f64)
+            .fold(0.0, f64::max)
+            * text.font_size
+            * width_factor;
+        let line_height = text.font_size * text.line_height;
+        let height = lines.len() as f64 * line_height;
+        MeasuredText {
+            width,
+            height,
+            line_height,
+            lines,
+        }
+    }
+}
+
 impl SvgDocument {
     #[must_use]
     pub fn new(view_box: Rect) -> Self {
@@ -324,6 +389,7 @@ pub fn render_svg(
     options: &RenderOptions,
 ) -> Result<RenderOutput<String>, RenderError> {
     let warnings = collect_policy_warnings(scene, options)?;
+    let fonts = FontRegistry::new();
     let view_box = scene.content_bounds.padded(options.padding.max(0.0));
     let mut document = SvgDocument::new_scaled(view_box, options.scale);
 
@@ -340,7 +406,7 @@ pub fn render_svg(
 
     let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
     for normalized in &scene.elements {
-        for node in render_element(normalized, options) {
+        for node in render_element(normalized, scene, options, &fonts) {
             content = content.child(node);
         }
     }
@@ -430,13 +496,21 @@ fn handle_unsupported(
     }
 }
 
-fn render_element(normalized: &NormalizedElement, options: &RenderOptions) -> Vec<SvgNode> {
+fn render_element(
+    normalized: &NormalizedElement,
+    scene: &Scene,
+    options: &RenderOptions,
+    fonts: &FontRegistry,
+) -> Vec<SvgNode> {
     match &normalized.element {
         Element::Rectangle(shape) => render_shape(shape, ShapeKind::Rectangle, options),
         Element::Ellipse(shape) => render_shape(shape, ShapeKind::Ellipse, options),
         Element::Diamond(shape) => render_shape(shape, ShapeKind::Diamond, options),
         Element::Line(linear) => render_linear(linear, normalized.abs_points.as_deref(), false),
         Element::Arrow(linear) => render_linear(linear, normalized.abs_points.as_deref(), true),
+        Element::Text(text) if options.text_policy == TextPolicy::SvgText => {
+            render_text(text, scene, fonts)
+        }
         _ => Vec::new(),
     }
 }
@@ -500,6 +574,127 @@ fn render_linear(
     }
 
     vec![group]
+}
+
+fn render_text(text: &TextElement, scene: &Scene, fonts: &FontRegistry) -> Vec<SvgNode> {
+    if text.text.is_empty() {
+        return Vec::new();
+    }
+    let measurement = fonts.measure_text(text);
+    let layout = text_layout(text, scene, &measurement);
+    let style = RenderStyle::from_base(&text.base);
+
+    let mut node = SvgNode::new("text")
+        .attr("x", layout.x.to_string())
+        .attr("y", layout.first_baseline.to_string())
+        .attr("fill", text.base.stroke_color.clone())
+        .attr("font-family", font_family_css(text.font_family))
+        .attr("font-size", text.font_size.to_string())
+        .attr("text-anchor", layout.anchor)
+        .attr("data-font-source", fonts.resolve_family(text.font_family));
+    if let Some(opacity) = &style.opacity {
+        node = node.attr("opacity", opacity);
+    }
+    if let Some(transform) = &style.transform {
+        node = node.attr("transform", transform);
+    }
+
+    for (index, line) in measurement.lines.iter().enumerate() {
+        let mut tspan = SvgNode::new("tspan").attr("x", layout.x.to_string());
+        if index == 0 {
+            tspan = tspan.attr("y", layout.first_baseline.to_string());
+        } else {
+            tspan = tspan.attr("dy", measurement.line_height.to_string());
+        }
+        node = node.child(tspan.text(line));
+    }
+
+    vec![node]
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TextLayout {
+    x: f64,
+    first_baseline: f64,
+    anchor: &'static str,
+}
+
+fn text_layout(text: &TextElement, scene: &Scene, measurement: &MeasuredText) -> TextLayout {
+    let rect = text_layout_rect(text, scene, measurement);
+    let x = match text.text_align {
+        TextAlign::Center => rect.x + rect.width / 2.0,
+        TextAlign::Right => rect.x + rect.width,
+        TextAlign::Left | TextAlign::Unknown => rect.x,
+    };
+    let anchor = match text.text_align {
+        TextAlign::Center => "middle",
+        TextAlign::Right => "end",
+        TextAlign::Left | TextAlign::Unknown => "start",
+    };
+    let top = match text.vertical_align {
+        VerticalAlign::Middle => rect.y + (rect.height - measurement.height).max(0.0) / 2.0,
+        VerticalAlign::Bottom => rect.y + (rect.height - measurement.height).max(0.0),
+        VerticalAlign::Top | VerticalAlign::Unknown => rect.y,
+    };
+    TextLayout {
+        x,
+        first_baseline: top + text.font_size * 0.8,
+        anchor,
+    }
+}
+
+fn text_layout_rect(text: &TextElement, scene: &Scene, measurement: &MeasuredText) -> Rect {
+    if let Some(container_id) = &text.container_id {
+        if let Some(container) = scene
+            .id_map
+            .get(container_id)
+            .and_then(|index| scene.elements.get(*index))
+        {
+            if let Some(rect) = container_text_rect(&container.element) {
+                return rect;
+            }
+        }
+    }
+
+    Rect {
+        x: text.base.x,
+        y: text.base.y,
+        width: text.base.width.max(measurement.width),
+        height: text.base.height.max(measurement.height),
+    }
+    .normalized()
+}
+
+fn container_text_rect(element: &Element) -> Option<Rect> {
+    const PADDING: f64 = 8.0;
+    let base = match element {
+        Element::Rectangle(shape) | Element::Ellipse(shape) | Element::Diamond(shape) => {
+            Some(&shape.base)
+        }
+        _ => None,
+    }?;
+    let rect = Rect {
+        x: base.x,
+        y: base.y,
+        width: base.width,
+        height: base.height,
+    }
+    .normalized();
+    Some(Rect {
+        x: rect.x + PADDING,
+        y: rect.y + PADDING,
+        width: (rect.width - PADDING * 2.0).max(0.0),
+        height: (rect.height - PADDING * 2.0).max(0.0),
+    })
+}
+
+fn text_lines(text: &str) -> Vec<String> {
+    let lines: Vec<String> = text.split('\n').map(ToOwned::to_owned).collect();
+    if lines.is_empty() {
+        vec![String::new()]
+    } else {
+        lines
+    }
 }
 
 fn clean_shape_node(shape: &ShapeElement, kind: ShapeKind) -> SvgNode {
@@ -978,9 +1173,9 @@ mod tests {
     use excalidraw_core::{normalize_file, parse_str};
 
     use super::{
-        color_to_svg, render_svg, sanitize_id, BackgroundMode, DefIdAllocator, ImagePolicy,
-        RenderError, RenderOptions, RenderOutput, RenderWarning, SvgDocument, SvgNode, TextPolicy,
-        UnsupportedElementMode,
+        color_to_svg, render_svg, sanitize_id, BackgroundMode, DefIdAllocator, FontRegistry,
+        ImagePolicy, RenderError, RenderOptions, RenderOutput, RenderWarning, SvgDocument, SvgNode,
+        TextPolicy, UnsupportedElementMode,
     };
 
     #[test]
@@ -1141,6 +1336,186 @@ mod tests {
             ],
             "policy warnings",
         )
+    }
+
+    #[test]
+    fn renders_svg_text_with_font_mapping_and_multiline_layout() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {
+                        "type":"text",
+                        "id":"text",
+                        "x":10,
+                        "y":20,
+                        "width":120,
+                        "height":80,
+                        "strokeColor":"#123456",
+                        "fontSize":20,
+                        "fontFamily":3,
+                        "lineHeight":1.5,
+                        "textAlign":"center",
+                        "verticalAlign":"middle",
+                        "text":"Hello\nworld"
+                    }
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(output.value.contains("<text"), "text node")?;
+        ensure(
+            output
+                .value
+                .contains("font-family=\"Cascadia Code, Courier New, monospace\""),
+            "font family",
+        )?;
+        ensure(output.value.contains("text-anchor=\"middle\""), "alignment")?;
+        ensure(output.value.contains("x=\"70\""), "center x")?;
+        ensure(output.value.contains("y=\"46\""), "middle first baseline")?;
+        ensure(output.value.contains("dy=\"30\""), "line height")?;
+        ensure(output.value.contains(">Hello</tspan>"), "first line")?;
+        ensure(output.value.contains(">world</tspan>"), "second line")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn renders_bound_text_inside_shape_containers() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {
+                        "type":"rectangle",
+                        "id":"box",
+                        "x":100,
+                        "y":50,
+                        "width":200,
+                        "height":100,
+                        "boundElements":[{"id":"label","type":"text"}]
+                    },
+                    {
+                        "type":"text",
+                        "id":"label",
+                        "containerId":"box",
+                        "fontSize":20,
+                        "fontFamily":2,
+                        "textAlign":"right",
+                        "verticalAlign":"bottom",
+                        "text":"Inside"
+                    }
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                quality: super::RenderQuality::Clean,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(output.value.contains("text-anchor=\"end\""), "right anchor")?;
+        ensure(
+            output.value.contains("x=\"292\""),
+            "container right padding",
+        )?;
+        ensure(output.value.contains("y=\"133\""), "bottom baseline")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn missing_container_and_arrow_label_text_fall_back_to_stored_text_box(
+    ) -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {
+                        "type":"arrow",
+                        "id":"arrow",
+                        "x":0,
+                        "y":0,
+                        "points":[[0,0],[100,0]],
+                        "boundElements":[{"id":"arrow-label","type":"text"}]
+                    },
+                    {
+                        "type":"text",
+                        "id":"arrow-label",
+                        "containerId":"arrow",
+                        "x":40,
+                        "y":10,
+                        "width":60,
+                        "height":30,
+                        "fontSize":10,
+                        "textAlign":"center",
+                        "text":"A"
+                    },
+                    {
+                        "type":"text",
+                        "id":"missing-label",
+                        "containerId":"missing",
+                        "x":200,
+                        "y":10,
+                        "width":80,
+                        "height":30,
+                        "fontSize":10,
+                        "textAlign":"right",
+                        "text":"Missing"
+                    }
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(
+            &scene,
+            &RenderOptions {
+                background: BackgroundMode::Transparent,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(
+            output.value.contains("x=\"70\""),
+            "arrow label stored center",
+        )?;
+        ensure(
+            output.value.contains("x=\"280\""),
+            "missing container fallback",
+        )?;
+        ensure(output.value.contains(">A</tspan>"), "arrow label text")?;
+        ensure(output.value.contains(">Missing</tspan>"), "fallback text")?;
+        usvg::Tree::from_str(&output.value, &usvg::Options::default())?;
+        Ok(())
+    }
+
+    #[test]
+    fn font_registry_measures_unicode_width_and_line_height() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"text","id":"text","fontSize":10,"fontFamily":3,"lineHeight":2,"text":"ab\n界"}
+                ]
+            }"##,
+        )?;
+        let [excalidraw_core::Element::Text(text)] = file.elements.as_slice() else {
+            return Err("expected text".into());
+        };
+        let measurement = FontRegistry::new().measure_text(text);
+
+        ensure_eq(&measurement.width, 12.4_f64, "unicode width")?;
+        ensure_eq(&measurement.height, 40.0_f64, "text height")?;
+        ensure_eq(&measurement.line_height, 20.0_f64, "line height")?;
+        Ok(())
     }
 
     #[test]

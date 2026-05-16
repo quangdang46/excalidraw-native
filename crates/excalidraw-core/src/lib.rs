@@ -11,7 +11,7 @@ pub mod types;
 pub mod validate;
 
 pub use color::{parse_excalidraw_color, Color, ColorParseError};
-pub use defaults::font_family_css;
+pub use defaults::{font_family_css, font_family_primary, font_family_width_factor};
 pub use normalize::{
     normalize_file, NormalizedElement, Point, Rect, Scene, SceneWarning, ZOrderFallbackReason,
 };
