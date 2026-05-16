@@ -1,5 +1,6 @@
 //! Parse-only validation for Excalidraw payloads.
 
+use serde::Serialize;
 use thiserror::Error;
 
 use crate::{
@@ -7,7 +8,7 @@ use crate::{
     LinearElement, TextElement,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ValidationLimits {
     pub max_elements: usize,
     pub max_element_size_bytes: usize,
@@ -34,7 +35,7 @@ impl Default for ValidationLimits {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct ValidationReport {
     pub valid: bool,
     pub element_count: usize,
@@ -57,7 +58,7 @@ impl ValidationReport {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Error)]
+#[derive(Debug, Clone, PartialEq, Eq, Error, Serialize)]
 pub enum ValidationError {
     #[error("payload is {actual} bytes, above limit {limit}")]
     PayloadTooLarge { actual: usize, limit: usize },
@@ -107,7 +108,7 @@ pub enum ValidationError {
     },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum ValidationWarning {
     UnknownElementType {
         element_type: String,
@@ -129,6 +130,45 @@ pub enum ValidationWarning {
         element_id: String,
         value: String,
     },
+}
+
+impl std::fmt::Display for ValidationWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ValidationWarning::UnknownElementType { element_type } => {
+                write!(f, "unknown element type: {element_type}")
+            }
+            ValidationWarning::UnsupportedElementType {
+                element_id,
+                element_type,
+            } => {
+                write!(f, "unsupported element type {element_type} ({element_id})")
+            }
+            ValidationWarning::MissingImage {
+                element_id,
+                file_id,
+            } => {
+                write!(
+                    f,
+                    "missing image for element {element_id} (file: {})",
+                    file_id.as_deref().unwrap_or("unknown")
+                )
+            }
+            ValidationWarning::InvalidColor {
+                element_id,
+                field,
+                value,
+            } => {
+                write!(
+                    f,
+                    "invalid color '{value}' for {field} in element {element_id}"
+                )
+            }
+            ValidationWarning::InvalidIndex { element_id, value } => {
+                write!(f, "invalid index '{value}' for element {element_id}")
+            }
+        }
+    }
 }
 
 pub fn validate_str(input: &str, limits: &ValidationLimits) -> ValidationReport {

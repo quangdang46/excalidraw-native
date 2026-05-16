@@ -150,18 +150,50 @@ pub struct NormalizedElement {
     pub frame_id: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum SceneWarning {
     MissingElementId { original_order: usize },
     InvalidBackgroundColor { value: String },
     ZOrderFallback { reason: ZOrderFallbackReason },
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 pub enum ZOrderFallbackReason {
     MissingIndex { element_id: String },
     InvalidIndex { element_id: String, value: String },
     DuplicateIndex { value: String },
+}
+
+impl std::fmt::Display for SceneWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SceneWarning::MissingElementId { original_order } => {
+                write!(f, "missing element id at index {original_order}")
+            }
+            SceneWarning::InvalidBackgroundColor { value } => {
+                write!(f, "invalid background color: {value}")
+            }
+            SceneWarning::ZOrderFallback { reason } => {
+                write!(f, "z-order fallback: {reason}")
+            }
+        }
+    }
+}
+
+impl std::fmt::Display for ZOrderFallbackReason {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ZOrderFallbackReason::MissingIndex { element_id } => {
+                write!(f, "missing index for element {element_id}")
+            }
+            ZOrderFallbackReason::InvalidIndex { element_id, value } => {
+                write!(f, "invalid index '{value}' for element {element_id}")
+            }
+            ZOrderFallbackReason::DuplicateIndex { value } => {
+                write!(f, "duplicate index '{value}'")
+            }
+        }
+    }
 }
 
 pub fn normalize_file(file: &ExcalidrawFile) -> Scene {

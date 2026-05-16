@@ -14,6 +14,7 @@ use excalidraw_core::{
 use fontdb::{Database, Family, Query};
 use rough_rs::svg::drawable_to_paths;
 use rough_rs::{Config, Generator, Options as RoughOptions};
+use serde::Serialize;
 use thiserror::Error;
 use unicode_width::UnicodeWidthStr;
 
@@ -92,7 +93,7 @@ pub struct RenderOutput<T> {
     pub warnings: Vec<RenderWarning>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub enum RenderWarning {
     UnsupportedElementPlaceholder {
         element_id: String,
@@ -118,6 +119,52 @@ pub enum RenderWarning {
         element_id: String,
         element_type: String,
     },
+}
+
+impl std::fmt::Display for RenderWarning {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            RenderWarning::UnsupportedElementPlaceholder {
+                element_id,
+                element_type,
+            } => {
+                write!(
+                    f,
+                    "unsupported element {element_type} rendered as placeholder ({element_id})"
+                )
+            }
+            RenderWarning::UnsupportedElementSkipped {
+                element_id,
+                element_type,
+            } => {
+                write!(
+                    f,
+                    "unsupported element {element_type} skipped ({element_id})"
+                )
+            }
+            RenderWarning::ImageSkipped { element_id } => {
+                write!(f, "image skipped ({element_id})")
+            }
+            RenderWarning::TextSkipped { element_id } => {
+                write!(f, "text skipped ({element_id})")
+            }
+            RenderWarning::MissingImageData { element_id } => {
+                write!(f, "missing image data, rendered placeholder ({element_id})")
+            }
+            RenderWarning::ImagePlaceholder { element_id } => {
+                write!(f, "image rendered as placeholder ({element_id})")
+            }
+            RenderWarning::UnknownElementPlaceholder {
+                element_id,
+                element_type,
+            } => {
+                write!(
+                    f,
+                    "unknown element {element_type} rendered as placeholder ({element_id})"
+                )
+            }
+        }
+    }
 }
 
 #[derive(Debug, Error)]
