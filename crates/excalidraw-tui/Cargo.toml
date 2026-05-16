@@ -9,8 +9,11 @@ description = "Terminal preview UI for excalidraw-native"
 
 [dependencies]
 crossterm.workspace = true
+image.workspace = true
 excalidraw-core = { path = "../excalidraw-core" }
 excalidraw-render = { path = "../excalidraw-render" }
+base64.workspace = true
+scopeguard = "1"
 ratatui.workspace = true
 ratatui-image.workspace = true
 thiserror.workspace = true

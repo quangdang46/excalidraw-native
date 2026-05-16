@@ -114,6 +114,11 @@ enum Commands {
     },
     /// Start MCP stdio server
     Serve,
+    /// View .excalidraw in terminal with pan/zoom
+    View {
+        /// Input .excalidraw file path
+        input: PathBuf,
+    },
     /// Validate a .excalidraw file
     Validate {
         /// Input .excalidraw file path
@@ -456,6 +461,10 @@ fn main() -> Result<()> {
                     elem.bounds.width, elem.bounds.height, elem.bounds.x, elem.bounds.y
                 );
             }
+        }
+        Commands::View { input } => {
+            let raw = read_input(&input)?;
+            excalidraw_tui::run_interactive(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
         }
         Commands::Serve => {
             tokio::runtime::Runtime::new()?

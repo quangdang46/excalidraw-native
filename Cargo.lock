@@ -719,11 +719,14 @@ dependencies = [
 name = "excalidraw-tui"
 version = "0.1.0"
 dependencies = [
+ "base64",
  "crossterm 0.29.0",
  "excalidraw-core",
  "excalidraw-render",
+ "image",
  "ratatui",
  "ratatui-image",
+ "scopeguard",
  "thiserror 1.0.69",
 ]
 
