@@ -112,6 +112,8 @@ enum Commands {
         #[arg(long, default_value = "text")]
         format: InfoFormat,
     },
+    /// Start MCP stdio server
+    Serve,
     /// Validate a .excalidraw file
     Validate {
         /// Input .excalidraw file path
@@ -454,6 +456,11 @@ fn main() -> Result<()> {
                     elem.bounds.width, elem.bounds.height, elem.bounds.x, elem.bounds.y
                 );
             }
+        }
+        Commands::Serve => {
+            tokio::runtime::Runtime::new()?
+                .block_on(excalidraw_mcp::run_server())
+                .map_err(|e| anyhow::anyhow!("MCP error: {e}"))?;
         }
         Commands::Validate { input, format } => {
             let raw = read_input(&input)?;

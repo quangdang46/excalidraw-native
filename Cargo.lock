@@ -669,6 +669,7 @@ dependencies = [
  "predicates",
  "serde_json",
  "tempfile",
+ "tokio",
 ]
 
 [[package]]
@@ -689,6 +690,7 @@ dependencies = [
  "excalidraw-core",
  "excalidraw-render",
  "rmcp",
+ "schemars",
  "serde",
  "serde_json",
  "thiserror 1.0.69",
