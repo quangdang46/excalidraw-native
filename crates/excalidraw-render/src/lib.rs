@@ -5,7 +5,7 @@
 
 use std::collections::HashSet;
 
-use excalidraw_core::{Color, Rect, Scene};
+use excalidraw_core::{Color, Element, Rect, Scene};
 use thiserror::Error;
 
 /// Current crate version.
@@ -25,16 +25,80 @@ pub enum BackgroundMode {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub enum RenderQuality {
+    Full,
+    FastSvg,
+    Clean,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UnsupportedElementMode {
+    Placeholder,
+    Skip,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ImagePolicy {
+    Embed,
+    Placeholder,
+    Skip,
+    Error,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextPolicy {
+    SvgText,
+    Skip,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct RenderOptions {
+    pub scale: f64,
+    pub padding: f64,
     pub background: BackgroundMode,
+    pub quality: RenderQuality,
+    pub unsupported: UnsupportedElementMode,
+    pub image_policy: ImagePolicy,
+    pub text_policy: TextPolicy,
 }
 
 impl Default for RenderOptions {
     fn default() -> Self {
         Self {
+            scale: 1.0,
+            padding: 16.0,
             background: BackgroundMode::FromFile,
+            quality: RenderQuality::Full,
+            unsupported: UnsupportedElementMode::Placeholder,
+            image_policy: ImagePolicy::Embed,
+            text_policy: TextPolicy::SvgText,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RenderOutput<T> {
+    pub value: T,
+    pub warnings: Vec<RenderWarning>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RenderWarning {
+    UnsupportedElementPlaceholder {
+        element_id: String,
+        element_type: String,
+    },
+    UnsupportedElementSkipped {
+        element_id: String,
+        element_type: String,
+    },
+    ImageSkipped {
+        element_id: String,
+    },
+    TextSkipped {
+        element_id: String,
+    },
 }
 
 #[derive(Debug, Error)]
@@ -44,6 +108,18 @@ pub enum RenderError {
 
     #[error("SVG output is not parseable: {0}")]
     InvalidSvg(String),
+
+    #[error("unsupported element is configured as an error: {element_type} {element_id}")]
+    UnsupportedElement {
+        element_id: String,
+        element_type: String,
+    },
+
+    #[error("image rendering is configured as an error: {element_id}")]
+    ImageBlocked { element_id: String },
+
+    #[error("PNG rendering is not implemented yet")]
+    PngNotImplemented,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -140,8 +216,18 @@ pub struct SvgDocument {
 impl SvgDocument {
     #[must_use]
     pub fn new(view_box: Rect) -> Self {
-        let width = ceil_to_u32(view_box.width).max(1);
-        let height = ceil_to_u32(view_box.height).max(1);
+        Self::new_scaled(view_box, 1.0)
+    }
+
+    #[must_use]
+    pub fn new_scaled(view_box: Rect, scale: f64) -> Self {
+        let safe_scale = if scale.is_finite() && scale > 0.0 {
+            scale
+        } else {
+            1.0
+        };
+        let width = ceil_to_u32(view_box.width * safe_scale).max(1);
+        let height = ceil_to_u32(view_box.height * safe_scale).max(1);
         Self {
             view_box,
             width,
@@ -228,16 +314,21 @@ impl DefIdAllocator {
     }
 }
 
-pub fn render_svg(scene: &Scene, options: &RenderOptions) -> Result<String, RenderError> {
-    let mut document = SvgDocument::new(scene.export_bounds);
+pub fn render_svg(
+    scene: &Scene,
+    options: &RenderOptions,
+) -> Result<RenderOutput<String>, RenderError> {
+    let warnings = collect_policy_warnings(scene, options)?;
+    let view_box = scene.content_bounds.padded(options.padding.max(0.0));
+    let mut document = SvgDocument::new_scaled(view_box, options.scale);
 
     if let Some(background) = background_color(scene, options) {
         document = document.node(
             SvgNode::new("rect")
-                .attr("x", scene.export_bounds.x.to_string())
-                .attr("y", scene.export_bounds.y.to_string())
-                .attr("width", scene.export_bounds.width.to_string())
-                .attr("height", scene.export_bounds.height.to_string())
+                .attr("x", view_box.x.to_string())
+                .attr("y", view_box.y.to_string())
+                .attr("width", view_box.width.to_string())
+                .attr("height", view_box.height.to_string())
                 .attr("fill", color_to_svg(background)),
         );
     }
@@ -246,7 +337,86 @@ pub fn render_svg(scene: &Scene, options: &RenderOptions) -> Result<String, Rend
     let svg = document.to_string()?;
     usvg::Tree::from_str(&svg, &usvg::Options::default())
         .map_err(|error| RenderError::InvalidSvg(error.to_string()))?;
-    Ok(svg)
+    Ok(RenderOutput {
+        value: svg,
+        warnings,
+    })
+}
+
+pub fn render_png(
+    _scene: &Scene,
+    _options: &RenderOptions,
+) -> Result<RenderOutput<Vec<u8>>, RenderError> {
+    Err(RenderError::PngNotImplemented)
+}
+
+fn collect_policy_warnings(
+    scene: &Scene,
+    options: &RenderOptions,
+) -> Result<Vec<RenderWarning>, RenderError> {
+    let mut warnings = Vec::new();
+    for normalized in &scene.elements {
+        match &normalized.element {
+            Element::Embeddable(element) => handle_unsupported(
+                "embeddable",
+                &element.base.id,
+                options.unsupported,
+                &mut warnings,
+            )?,
+            Element::Iframe(element) => handle_unsupported(
+                "iframe",
+                &element.base.id,
+                options.unsupported,
+                &mut warnings,
+            )?,
+            Element::Image(image) => match options.image_policy {
+                ImagePolicy::Embed | ImagePolicy::Placeholder => {}
+                ImagePolicy::Skip => warnings.push(RenderWarning::ImageSkipped {
+                    element_id: image.base.id.clone(),
+                }),
+                ImagePolicy::Error => {
+                    return Err(RenderError::ImageBlocked {
+                        element_id: image.base.id.clone(),
+                    });
+                }
+            },
+            Element::Text(text) if options.text_policy == TextPolicy::Skip => {
+                warnings.push(RenderWarning::TextSkipped {
+                    element_id: text.base.id.clone(),
+                });
+            }
+            _ => {}
+        }
+    }
+    Ok(warnings)
+}
+
+fn handle_unsupported(
+    element_type: &str,
+    element_id: &str,
+    mode: UnsupportedElementMode,
+    warnings: &mut Vec<RenderWarning>,
+) -> Result<(), RenderError> {
+    match mode {
+        UnsupportedElementMode::Placeholder => {
+            warnings.push(RenderWarning::UnsupportedElementPlaceholder {
+                element_id: element_id.to_owned(),
+                element_type: element_type.to_owned(),
+            });
+            Ok(())
+        }
+        UnsupportedElementMode::Skip => {
+            warnings.push(RenderWarning::UnsupportedElementSkipped {
+                element_id: element_id.to_owned(),
+                element_type: element_type.to_owned(),
+            });
+            Ok(())
+        }
+        UnsupportedElementMode::Error => Err(RenderError::UnsupportedElement {
+            element_id: element_id.to_owned(),
+            element_type: element_type.to_owned(),
+        }),
+    }
 }
 
 fn background_color(scene: &Scene, options: &RenderOptions) -> Option<Color> {
@@ -352,8 +522,9 @@ mod tests {
     use excalidraw_core::{normalize_file, parse_str};
 
     use super::{
-        color_to_svg, render_svg, sanitize_id, BackgroundMode, DefIdAllocator, RenderError,
-        RenderOptions, SvgDocument, SvgNode,
+        color_to_svg, render_svg, sanitize_id, BackgroundMode, DefIdAllocator, ImagePolicy,
+        RenderError, RenderOptions, RenderOutput, RenderWarning, SvgDocument, SvgNode, TextPolicy,
+        UnsupportedElementMode,
     };
 
     #[test]
@@ -365,7 +536,8 @@ mod tests {
             }"##,
         )?;
         let scene = normalize_file(&file);
-        let svg = render_svg(&scene, &RenderOptions::default())?;
+        let output = render_svg(&scene, &RenderOptions::default())?;
+        let svg = output.value;
 
         ensure(svg.contains("<svg"), "svg root")?;
         ensure(svg.contains("fill=\"#ffeeaa\""), "background fill")?;
@@ -446,10 +618,11 @@ mod tests {
             &scene,
             &RenderOptions {
                 background: BackgroundMode::Transparent,
+                ..RenderOptions::default()
             },
         )?;
         ensure(
-            !transparent.contains("<rect"),
+            !transparent.value.contains("<rect"),
             "transparent omits background",
         )?;
 
@@ -457,13 +630,94 @@ mod tests {
             &scene,
             &RenderOptions {
                 background: BackgroundMode::Override(excalidraw_core::Color::rgb(1, 2, 3)),
+                ..RenderOptions::default()
             },
         )?;
-        ensure(override_svg.contains("fill=\"#010203\""), "override fill")?;
+        ensure(
+            override_svg.value.contains("fill=\"#010203\""),
+            "override fill",
+        )?;
         ensure_eq(
             &color_to_svg(excalidraw_core::Color::transparent()).as_str(),
             "none",
             "transparent paint",
+        )
+    }
+
+    #[test]
+    fn render_options_control_policy_warnings() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[
+                    {"type":"iframe","id":"embed","width":10,"height":10},
+                    {"type":"image","id":"image","width":10,"height":10},
+                    {"type":"text","id":"text","text":"hello"}
+                ]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let output = render_svg(
+            &scene,
+            &RenderOptions {
+                scale: 2.0,
+                padding: 4.0,
+                unsupported: UnsupportedElementMode::Skip,
+                image_policy: ImagePolicy::Skip,
+                text_policy: TextPolicy::Skip,
+                ..RenderOptions::default()
+            },
+        )?;
+
+        ensure(output.value.contains("width=\""), "width attr")?;
+        ensure_eq(
+            &output.warnings,
+            vec![
+                RenderWarning::UnsupportedElementSkipped {
+                    element_id: "embed".to_owned(),
+                    element_type: "iframe".to_owned(),
+                },
+                RenderWarning::ImageSkipped {
+                    element_id: "image".to_owned(),
+                },
+                RenderWarning::TextSkipped {
+                    element_id: "text".to_owned(),
+                },
+            ],
+            "policy warnings",
+        )
+    }
+
+    #[test]
+    fn render_policy_errors_are_structured() -> Result<(), Box<dyn Error>> {
+        let file = parse_str(
+            r##"{
+                "elements":[{"type":"embeddable","id":"embed","width":10,"height":10}]
+            }"##,
+        )?;
+        let scene = normalize_file(&file);
+        let error = render_svg(
+            &scene,
+            &RenderOptions {
+                unsupported: UnsupportedElementMode::Error,
+                ..RenderOptions::default()
+            },
+        )
+        .map(|_: RenderOutput<String>| ())
+        .map_err(|error| error.to_string());
+
+        ensure_eq(
+            &error,
+            Err("unsupported element is configured as an error: embeddable embed".to_owned()),
+            "unsupported error",
+        )?;
+
+        let png_error = super::render_png(&scene, &RenderOptions::default())
+            .map(|_: RenderOutput<Vec<u8>>| ())
+            .map_err(|error| error.to_string());
+        ensure_eq(
+            &png_error,
+            Err("PNG rendering is not implemented yet".to_owned()),
+            "png error",
         )
     }
 
