@@ -21,3 +21,9 @@ tiny-skia.workspace = true
 unicode-width.workspace = true
 usvg.workspace = true
 
+[dev-dependencies]
+criterion.workspace = true
+
+[[bench]]
+name = "render_bench"
+harness = false
