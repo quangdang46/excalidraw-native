@@ -1143,6 +1143,7 @@ dependencies = [
  "crossterm",
  "excalidraw-core",
  "excalidraw-render",
+ "icy_sixel",
  "image",
  "ratatui",
  "ratatui-image",
