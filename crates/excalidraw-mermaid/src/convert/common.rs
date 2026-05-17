@@ -147,6 +147,7 @@ pub struct NodeOutput {
 }
 
 /// Convert a `LayoutEdge` into an Excalidraw arrow with optional edge label.
+#[allow(clippy::too_many_arguments)]
 pub fn edge_with_label(
     layout: &LayoutEdge,
     start_id: Option<&str>,

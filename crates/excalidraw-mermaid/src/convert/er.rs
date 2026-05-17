@@ -99,9 +99,11 @@ pub fn convert(
 
 fn map_marker_to_arrowhead(marker: &str) -> &'static str {
     let lower = marker.to_ascii_lowercase();
-    if lower.contains("zero_or_one") || lower.contains("one_or_zero") {
-        "circle"
-    } else if lower.contains("zero_or_many") || lower.contains("many_or_zero") {
+    if lower.contains("zero_or_one")
+        || lower.contains("one_or_zero")
+        || lower.contains("zero_or_many")
+        || lower.contains("many_or_zero")
+    {
         "circle"
     } else if lower.contains("only_one") || lower.ends_with("_one") || lower == "one" {
         "bar"

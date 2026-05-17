@@ -57,8 +57,9 @@ pub fn convert(
         let start_id = shape_ids.get(&edge.from).map(String::as_str);
         let end_id = shape_ids.get(&edge.to).map(String::as_str);
         let edge_info = semantic_edges.get(&edge.id);
-        let (end_arrowhead, stroke_style) =
-            edge_info.map(arrowhead_for_edge).unwrap_or(("arrow", "solid"));
+        let (end_arrowhead, stroke_style) = edge_info
+            .map(arrowhead_for_edge)
+            .unwrap_or(("arrow", "solid"));
 
         let EdgeOutput {
             arrow_id,
