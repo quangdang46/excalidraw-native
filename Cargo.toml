@@ -6,6 +6,7 @@ members = [
     "crates/excalidraw-tui",
     "crates/excalidraw-mcp",
     "crates/excalidraw-cli",
+    "crates/excalidraw-mermaid",
 ]
 
 [workspace.package]
@@ -22,11 +23,11 @@ clap = { version = "4", features = ["derive", "color"] }
 crossterm = "0.29"
 fontdb = "0.23"
 image = "0.25"
-ratatui = "0.29"
-ratatui-image = "8"
+ratatui = "0.30"
+ratatui-image = { version = "11", default-features = false, features = ["crossterm", "image-defaults"] }
 resvg = "=0.47.0"
 rmcp = { version = "=1.7.0", features = ["server", "transport-io"] }
-rough-rs = { path = "../rough-rs" }
+rough-rs = "0.1"
 serde = { version = "1", features = ["derive"] }
 schemars = "1"
 serde_json = "1"
@@ -39,3 +40,6 @@ predicates = "3"
 tokio = { version = "1", features = ["full"] }
 unicode-width = "0.2"
 usvg = "=0.47.0"
+# Mermaid v0.2 — pin exact versions because layout structs are the API boundary.
+merman-core = "=0.4.0"
+merman-render = "=0.4.0"

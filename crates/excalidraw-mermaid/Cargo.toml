@@ -1,20 +1,19 @@
 [package]
-name = "excalidraw-mcp"
+name = "excalidraw-mermaid"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
 rust-version.workspace = true
-description = "MCP server tools for excalidraw-native"
+description = "Mermaid → Excalidraw conversion built on merman-core/merman-render and the excalidraw-native renderer"
 
 [dependencies]
-base64.workspace = true
 excalidraw-core = { path = "../excalidraw-core" }
-excalidraw-mermaid = { path = "../excalidraw-mermaid" }
-excalidraw-render = { path = "../excalidraw-render" }
-rmcp.workspace = true
-schemars.workspace = true
+merman-core.workspace = true
+merman-render.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-tokio.workspace = true
+
+[dev-dependencies]
+excalidraw-render = { path = "../excalidraw-render" }

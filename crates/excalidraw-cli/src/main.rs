@@ -127,6 +127,66 @@ enum Commands {
         #[arg(long, default_value = "text")]
         format: InfoFormat,
     },
+    /// Convert Mermaid source to a .excalidraw scene
+    MermaidToExcalidraw {
+        /// Input Mermaid file path (or `-` for stdin)
+        input: PathBuf,
+        /// Output .excalidraw file path (defaults to stdout)
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Font size for generated labels
+        #[arg(long, default_value = "16")]
+        font_size: u32,
+        /// Flowchart curve style
+        #[arg(long, default_value = "linear")]
+        curve: FlowchartCurveArg,
+        /// Maximum edges allowed (safety cap)
+        #[arg(long, default_value = "5000")]
+        max_edges: usize,
+        /// Strategy when an unsupported Mermaid diagram is encountered
+        #[arg(long, default_value = "placeholder")]
+        on_unsupported: OnUnsupportedArg,
+    },
+    /// Convert Mermaid source and render directly to SVG or PNG
+    Mermaid {
+        /// Input Mermaid file path (or `-` for stdin)
+        input: PathBuf,
+        /// Output file path (extension determines format: .svg, .png or .excalidraw)
+        output: PathBuf,
+        /// Render scale
+        #[arg(long, default_value = "1.0")]
+        scale: f64,
+        /// Padding around content
+        #[arg(long, default_value = "16.0")]
+        padding: f64,
+        /// Font size for generated labels
+        #[arg(long, default_value = "16")]
+        font_size: u32,
+        /// Flowchart curve style
+        #[arg(long, default_value = "linear")]
+        curve: FlowchartCurveArg,
+        /// Strategy when an unsupported Mermaid diagram is encountered
+        #[arg(long, default_value = "placeholder")]
+        on_unsupported: OnUnsupportedArg,
+        /// Render quality
+        #[arg(long, default_value = "full")]
+        quality: QualityArg,
+        /// Warning output mode
+        #[arg(long, default_value = "text")]
+        warnings: WarningMode,
+    },
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+enum FlowchartCurveArg {
+    Linear,
+    Basis,
+}
+
+#[derive(Debug, Clone, ValueEnum)]
+enum OnUnsupportedArg {
+    Placeholder,
+    Error,
 }
 
 #[derive(Debug, Clone, ValueEnum)]
@@ -269,6 +329,28 @@ fn write_output(path: &Option<PathBuf>, content: &[u8]) -> Result<()> {
             .context("writing to stdout")?,
     }
     Ok(())
+}
+
+fn mermaid_options(
+    font_size: u32,
+    curve: &FlowchartCurveArg,
+    on_unsupported: &OnUnsupportedArg,
+    max_edges: usize,
+) -> excalidraw_mermaid::MermaidConvertOptions {
+    excalidraw_mermaid::MermaidConvertOptions {
+        font_size: font_size.max(1) as f64,
+        flowchart_curve: match curve {
+            FlowchartCurveArg::Linear => excalidraw_mermaid::FlowchartCurve::Linear,
+            FlowchartCurveArg::Basis => excalidraw_mermaid::FlowchartCurve::Basis,
+        },
+        max_edges,
+        max_text_size: 4_096,
+        on_unsupported: match on_unsupported {
+            OnUnsupportedArg::Placeholder => excalidraw_mermaid::OnUnsupported::Placeholder,
+            OnUnsupportedArg::Error => excalidraw_mermaid::OnUnsupported::Error,
+        },
+        hachure_fill: false,
+    }
 }
 
 fn element_id(element: &excalidraw_core::Element) -> &str {
@@ -470,6 +552,84 @@ fn main() -> Result<()> {
             tokio::runtime::Runtime::new()?
                 .block_on(excalidraw_mcp::run_server())
                 .map_err(|e| anyhow::anyhow!("MCP error: {e}"))?;
+        }
+        Commands::MermaidToExcalidraw {
+            input,
+            output,
+            font_size,
+            curve,
+            max_edges,
+            on_unsupported,
+        } => {
+            let raw = read_input(&input)?;
+            let options = mermaid_options(font_size, &curve, &on_unsupported, max_edges);
+            let value = excalidraw_mermaid::parse_to_excalidraw_value(&raw, &options)
+                .context("converting Mermaid to Excalidraw")?;
+            let serialized = serde_json::to_string_pretty(&value)?;
+            match output {
+                Some(p) => fs::write(&p, serialized.as_bytes())
+                    .with_context(|| format!("writing {}", p.display()))?,
+                None => {
+                    io::stdout()
+                        .write_all(serialized.as_bytes())
+                        .context("writing to stdout")?;
+                    io::stdout().write_all(b"\n").ok();
+                }
+            }
+        }
+        Commands::Mermaid {
+            input,
+            output,
+            scale,
+            padding,
+            font_size,
+            curve,
+            on_unsupported,
+            quality,
+            warnings,
+        } => {
+            let raw = read_input(&input)?;
+            let options = mermaid_options(font_size, &curve, &on_unsupported, 5000);
+            let ext = output
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            if ext == "excalidraw" {
+                let value = excalidraw_mermaid::parse_to_excalidraw_value(&raw, &options)
+                    .context("converting Mermaid to Excalidraw")?;
+                fs::write(&output, serde_json::to_string_pretty(&value)?.as_bytes())?;
+            } else {
+                let file = excalidraw_mermaid::parse_to_excalidraw_file(&raw, &options)
+                    .context("converting Mermaid to Excalidraw")?;
+                let scene = excalidraw_core::normalize_file(&file);
+                let opts = render_options(
+                    scale,
+                    padding,
+                    &BackgroundArg::FromFile,
+                    &quality,
+                    &UnsupportedArg::Placeholder,
+                    &ImagePolicyArg::Embed,
+                );
+                match ext.as_str() {
+                    "svg" => {
+                        let result = excalidraw_render::render_svg(&scene, &opts)?;
+                        emit_warnings(&result.warnings, &warnings);
+                        fs::write(&output, result.value.as_bytes())?;
+                    }
+                    "png" => {
+                        let result = excalidraw_render::render_png(&scene, &opts)?;
+                        emit_warnings(&result.warnings, &warnings);
+                        fs::write(&output, &result.value)?;
+                    }
+                    _ => {
+                        eprintln!(
+                            "error: unsupported output format '.{ext}' (use .svg, .png or .excalidraw)"
+                        );
+                        process::exit(1);
+                    }
+                }
+            }
         }
         Commands::Validate { input, format } => {
             let raw = read_input(&input)?;

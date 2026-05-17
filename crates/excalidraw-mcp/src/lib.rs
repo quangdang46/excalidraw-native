@@ -54,6 +54,29 @@ pub struct ValidateParams {
     pub path: String,
 }
 
+/// Parameters for the `mermaid_to_excalidraw` tool.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+pub struct MermaidParams {
+    /// Mermaid source text. Either `source` or `path` must be provided.
+    #[serde(default)]
+    pub source: Option<String>,
+    /// Path to a Mermaid source file. Either `source` or `path` must be provided.
+    #[serde(default)]
+    pub path: Option<String>,
+    /// Font size for generated labels (default 16).
+    #[serde(default)]
+    pub font_size: Option<f64>,
+    /// Flowchart curve style: `linear` or `basis`.
+    #[serde(default)]
+    pub flowchart_curve: Option<String>,
+    /// How to handle unsupported diagrams: `placeholder` or `error`.
+    #[serde(default)]
+    pub on_unsupported: Option<String>,
+    /// Maximum number of edges to allow (safety cap, default 5000).
+    #[serde(default)]
+    pub max_edges: Option<usize>,
+}
+
 // ---- Response types ----
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -121,6 +144,14 @@ struct RenderFileResponse {
     data_base64: Option<String>,
     svg: Option<String>,
     warnings: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+struct MermaidResponse {
+    /// Stringified `.excalidraw` document, ready to feed into the rest of the
+    /// pipeline. Use `parse_elements` or `to_svg` next.
+    excalidraw: String,
+    element_count: usize,
 }
 
 // ---- Server ----
@@ -298,6 +329,37 @@ impl ExcalidrawServer {
         serde_json::to_string_pretty(&resp).map_err(|e| e.to_string())
     }
 
+    /// Convert Mermaid source to a `.excalidraw` document.
+    #[tool(
+        name = "mermaid_to_excalidraw",
+        description = "Convert Mermaid source text into a .excalidraw document (Tier 1 flowchart/sequence/class/state/ER supported)."
+    )]
+    pub async fn mermaid_to_excalidraw(
+        &self,
+        params: Parameters<MermaidParams>,
+    ) -> Result<String, String> {
+        let source = match (&params.0.source, &params.0.path) {
+            (Some(text), _) => text.clone(),
+            (None, Some(path)) => read_file(path)?,
+            (None, None) => return Err("either `source` or `path` is required".into()),
+        };
+        let opts = build_mermaid_options(&params.0);
+        let value = excalidraw_mermaid::parse_to_excalidraw_value(&source, &opts)
+            .map_err(|e| format!("Mermaid conversion error: {e}"))?;
+        let element_count = value
+            .get("elements")
+            .and_then(|e| e.as_array())
+            .map(Vec::len)
+            .unwrap_or(0);
+        let scene_text =
+            serde_json::to_string(&value).map_err(|e| format!("Serialization error: {e}"))?;
+        let resp = MermaidResponse {
+            excalidraw: scene_text,
+            element_count,
+        };
+        serde_json::to_string_pretty(&resp).map_err(|e| e.to_string())
+    }
+
     /// Render an .excalidraw file, returning both SVG and PNG base64.
     #[tool(
         name = "render_file",
@@ -358,6 +420,23 @@ fn read_file(path: &str) -> Result<String, String> {
     } else {
         std::fs::read_to_string(Path::new(path))
             .map_err(|e| format!("file read error for {path}: {e}"))
+    }
+}
+
+fn build_mermaid_options(params: &MermaidParams) -> excalidraw_mermaid::MermaidConvertOptions {
+    excalidraw_mermaid::MermaidConvertOptions {
+        font_size: params.font_size.unwrap_or(16.0),
+        flowchart_curve: match params.flowchart_curve.as_deref() {
+            Some("basis") => excalidraw_mermaid::FlowchartCurve::Basis,
+            _ => excalidraw_mermaid::FlowchartCurve::Linear,
+        },
+        max_edges: params.max_edges.unwrap_or(5_000),
+        max_text_size: 4_096,
+        on_unsupported: match params.on_unsupported.as_deref() {
+            Some("error") => excalidraw_mermaid::OnUnsupported::Error,
+            _ => excalidraw_mermaid::OnUnsupported::Placeholder,
+        },
+        hachure_fill: false,
     }
 }
 
