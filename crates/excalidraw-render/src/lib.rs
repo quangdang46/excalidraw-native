@@ -450,6 +450,7 @@ pub fn render_svg(
     let fonts = FontRegistry::new();
     let view_box = scene.content_bounds.padded(options.padding.max(0.0));
     let mut document = SvgDocument::new_scaled(view_box, options.scale);
+    let mut frame_clip_defs = HashSet::<String>::new();
 
     if let Some(background) = background_color(scene, options) {
         document = document.node(
@@ -464,7 +465,13 @@ pub fn render_svg(
 
     let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
     for normalized in &scene.elements {
-        let rendered = render_element(normalized, scene, options, &fonts, &mut warnings);
+        let mut rendered = render_element(normalized, scene, options, &fonts, &mut warnings);
+        if let Some((clip_id, clip_def)) = frame_clip_for_child(normalized, scene) {
+            if frame_clip_defs.insert(clip_id.clone()) {
+                rendered.defs.push(clip_def);
+            }
+            rendered.nodes = wrap_nodes_in_clip(rendered.nodes, &clip_id);
+        }
         for def in rendered.defs {
             document = document.def(def);
         }
@@ -495,6 +502,7 @@ pub fn render_png(
         1.0
     };
     let mut document = SvgDocument::new_scaled(view_box, safe_scale);
+    let mut frame_clip_defs = HashSet::<String>::new();
 
     if let Some(background) = background_color(scene, options) {
         document = document.node(
@@ -509,7 +517,13 @@ pub fn render_png(
 
     let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
     for normalized in &scene.elements {
-        let rendered = render_element(normalized, scene, options, &fonts, &mut warnings);
+        let mut rendered = render_element(normalized, scene, options, &fonts, &mut warnings);
+        if let Some((clip_id, clip_def)) = frame_clip_for_child(normalized, scene) {
+            if frame_clip_defs.insert(clip_id.clone()) {
+                rendered.defs.push(clip_def);
+            }
+            rendered.nodes = wrap_nodes_in_clip(rendered.nodes, &clip_id);
+        }
         for def in rendered.defs {
             document = document.def(def);
         }
@@ -617,6 +631,37 @@ fn handle_unsupported(
 struct RenderedElement {
     defs: Vec<SvgNode>,
     nodes: Vec<SvgNode>,
+}
+
+fn frame_clip_for_child(normalized: &NormalizedElement, scene: &Scene) -> Option<(String, SvgNode)> {
+    let frame_id = normalized.frame_id.as_ref()?;
+    let frame_index = *scene.id_map.get(frame_id)?;
+    let frame = match &scene.elements.get(frame_index)?.element {
+        Element::Frame(frame) | Element::MagicFrame(frame) if frame.clip.unwrap_or(false) => frame,
+        _ => return None,
+    };
+    let frame_base = &frame.base;
+    let clip_id = format!("frame-clip-{}", sanitize_id(frame_id));
+    let clip_rect = SvgNode::new("rect")
+        .attr("x", frame_base.x.to_string())
+        .attr("y", frame_base.y.to_string())
+        .attr("width", frame_base.width.to_string())
+        .attr("height", frame_base.height.to_string());
+    let clip_def = SvgNode::new("clipPath")
+        .attr("id", clip_id.clone())
+        .child(clip_rect);
+    Some((clip_id, clip_def))
+}
+
+fn wrap_nodes_in_clip(nodes: Vec<SvgNode>, clip_id: &str) -> Vec<SvgNode> {
+    if nodes.is_empty() {
+        return nodes;
+    }
+    let mut group = SvgNode::new("g").attr("clip-path", format!("url(#{clip_id})"));
+    for node in nodes {
+        group = group.child(node);
+    }
+    vec![group]
 }
 
 fn nodes_only(nodes: Vec<SvgNode>) -> RenderedElement {
