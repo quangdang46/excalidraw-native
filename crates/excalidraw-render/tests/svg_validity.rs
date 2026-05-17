@@ -73,6 +73,28 @@ fn svg_validity_arrows_bound() {
     let output = render_fixture_svg("arrows_bound.excalidraw", &Default::default());
     validate_svg(&output.value, "arrows_bound");
     assert_contains(&output.value, "label", "arrows_bound");
+    // Bindings must be reflected in the SVG so consumers can identify which
+    // shapes an arrow connects to (and so endpoints visually attach to those
+    // shapes' edges instead of their original raw points).
+    assert_contains(&output.value, r#"id="conn""#, "arrows_bound id");
+    assert_contains(
+        &output.value,
+        r#"data-start-binding="src""#,
+        "arrows_bound start binding",
+    );
+    assert_contains(
+        &output.value,
+        r#"data-end-binding="dst""#,
+        "arrows_bound end binding",
+    );
+    // The arrow's raw points are (90,55)->(150,55) in scene coordinates; with
+    // `src` (x=10,w=80) and `dst` (x=150,w=80) plus 1px gap, the rendered
+    // endpoints should sit at x=91 and x=149 (the unique line-only path).
+    assert_contains(
+        &output.value,
+        r#"<path d="M91 55 L149 55""#,
+        "arrows_bound attached endpoints",
+    );
 }
 
 #[test]

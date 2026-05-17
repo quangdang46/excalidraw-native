@@ -9,6 +9,7 @@ description = "Terminal preview UI for excalidraw-native"
 
 [dependencies]
 crossterm.workspace = true
+icy_sixel.workspace = true
 image.workspace = true
 excalidraw-core = { path = "../excalidraw-core" }
 excalidraw-render = { path = "../excalidraw-render" }

@@ -6,107 +6,40 @@ All 134 tests pass, all 12 Excalidraw fixtures render to valid SVG/PNG, and all 
 
 ---
 
-## 🔴 CRITICAL — Arrow connections are NOT rendered
+## ✅ FIXED — Arrow connections now respect bindings
 
-### Issue: `startBinding` / `endBinding` metadata is completely ignored by renderer
+### Resolved in: [PR #?](../../pulls) — binding-aware endpoint computation, gap, and SVG metadata
 
-The renderer treats **all arrows as standalone straight lines**. Bound arrows (arrows connected to shapes) are rendered identically to free-standing arrows — no gap, no shape-boundary intersection, no connection point computation.
+`render_linear()` (`crates/excalidraw-render/src/lib.rs`) now reads `start_binding` and `end_binding`, looks up the bound shape via `scene.id_map`, computes the intersection of the arrow direction with the shape edge (rectangle, ellipse, or diamond), and shrinks the endpoint by `binding.gap`. Arrow groups now carry `id`, `data-start-binding`, and `data-end-binding` attributes.
 
-**Code paths involved:**
+Verified by the integration test `svg_validity_arrows_bound`: for the `arrows_bound.excalidraw` fixture (two rects at x=10..90 and x=150..230, arrow raw points (90,55)→(150,55), gap=1), the rendered line is `M91 55 L149 55` and the group is `<g id="conn" data-start-binding="src" data-end-binding="dst">`.
 
-| File | Lines | Problem |
-|---|---|---|
-| `crates/excalidraw-render/src/lib.rs` | 733-777 | `render_linear()` only uses `abs_points` and arrowhead style — never reads `start_binding` or `end_binding` |
-| `crates/excalidraw-core/src/types.rs` | 220-224 | `start_binding` / `end_binding` fields are parsed from JSON but never consumed |
-| `crates/excalidraw-core/src/normalize.rs` | 133, 437-451 | `bound_arrows` HashMap is built during normalization but never referenced by renderer |
-| `crates/excalidraw-core/src/types.rs` | 227 | `elbowed` field parsed but unused — right-angle connectors render as straight lines |
-
-**What's missing:**
-
-1. **Binding-aware endpoint computation** — Read `startBinding.elementId` / `endBinding.elementId`, look up the bound shape in `scene.id_map`, compute where the arrow intersects the shape boundary
-2. **Gap application** — `ArrowBinding.gap` should shorten the arrow so the endpoint stops before the shape edge
-3. **Focus handling** — `ArrowBinding.focus` controls which side/position on the shape edge the arrow connects to
-4. **Elbowed arrow routing** — When `elbowed == true`, arrows should follow right-angle paths
-5. **SVG semantic attributes** — Arrow groups should include `data-start-binding`, `data-end-binding` attributes for traceability
-6. **Element IDs** — Rendered SVG groups should include `id` attributes matching Excalidraw element IDs
-
-**Example of the bug (arrows_basic.excalidraw):**
-```xml
-<!-- Arrow rendered as plain line, no binding info -->
-<g>
-  <path d="M90 55 L150 55" stroke="#000000" stroke-width="2" fill="none"/>
-  <path d="M138 60.4 L150 55 M150 55 L138 49.6" stroke="#000000" stroke-width="2" fill="none"/>
-</g>
-<!-- No gap from shape edges, no metadata showing src→dst connection -->
-```
+**Still open (lower priority):**
+- **Focus handling** — `ArrowBinding.focus` is parsed but not yet used to bias the connection point along the shape edge.
+- **Elbowed routing** — `elbowed: true` arrows still render as straight lines.
+- **Per-element `id` on non-arrow shapes** — only arrow groups carry `id`/binding attributes today; rectangles/ellipses still render as anonymous `<g>` wrappers (this is the remaining piece of issue #3 below).
 
 ---
 
-## 🔴 CRITICAL — `view` command cannot render to terminal
+## ✅ FIXED — `view` command renders in non-interactive environments
 
-### Issue: `excd view` crashes with unhelpful error in non-interactive environments
+### Resolved in: [PR #?](../../pulls)
 
-**Error:** `Terminal error: No such device or address (os error 6)`
+`crates/excalidraw-cli/src/main.rs` now imports `std::io::IsTerminal` and the `View` subcommand checks `io::stdin().is_terminal() && io::stdout().is_terminal()` before entering the interactive TUI. When either side is not a TTY (or the user passes `--no-interactive`), it falls back to `view_file()` which renders one shot to stdout. This makes `excd view foo.excalidraw | cat` and pipelines work without `enable_raw_mode()` errors.
 
-**Root cause:** `run_interactive()` at `crates/excalidraw-tui/src/lib.rs:191` unconditionally calls `crossterm::terminal::enable_raw_mode()` without checking if stdin is a TTY.
-
-**Code paths:**
-
-| File | Lines | What happens |
-|---|---|---|
-| `crates/excalidraw-cli/src/main.rs` | 547-549 | CLI `View` command calls `run_interactive()` unconditionally |
-| `crates/excalidraw-tui/src/lib.rs` | 184-191 | `run_interactive()` calls `enable_raw_mode()` → fails with ENXIO |
-| `crates/excalidraw-tui/src/lib.rs` | 163-181 | `view_file()` — non-interactive fallback **exists but is never called** |
-| `crates/excalidraw-tui/src/lib.rs` | 37-70 | `detect_protocol()` — env-var based, doesn't verify TTY availability |
-
-**Fix options:**
-- **Option A:** Check `std::io::stdin().is_terminal()` before calling `run_interactive()`. If no TTY, fall back to `view_file()` for one-shot non-interactive rendering
-- **Option B:** Improve error message: `"The 'view' command requires an interactive terminal. Use 'excd to-png' for non-interactive rendering."`
+Additionally, `output_sixel()` previously only emitted a placeholder DCS header. It now decodes the rendered PNG and encodes it with the pure-Rust `icy_sixel` crate, falling back to halfblock if Sixel encoding fails. `detect_protocol()` is now conservative — it no longer claims Sixel support for vanilla `xterm-256color` terminals, which would otherwise produce invisible output. Color-capable terminals without explicit Sixel/Kitty/iTerm2 signals fall back to halfblock, which renders a real visible image everywhere.
 
 ---
 
-## 🔴 CRITICAL — SVG output lacks proper structure and element relationships
+## 🟡 PARTIALLY ADDRESSED — SVG output structure
 
-### Issue: SVG output is flat — no element IDs, no grouping by relationship, no semantic attributes
+Arrow groups now carry `id` and `data-start-binding` / `data-end-binding`. The remaining structural improvements (per-shape `id`, nested bound-text grouping, `<clipPath>` for frames) are out of scope for this fix and tracked here.
 
-**Problems:**
+**Still open:**
 
-1. **No element IDs** — SVG groups don't have `id` attributes matching Excalidraw element IDs. Makes it impossible to link SVG elements back to source elements.
-
-2. **No binding metadata** — No `data-*` attributes showing which arrows connect to which shapes. The SVG is semantically dead.
-
-3. **No clipPath for frames** — Frames use `data-frame` attribute but don't apply SVG `<clipPath>` to clip children inside the frame boundary.
-
-4. **No semantic grouping** — Elements are rendered as flat siblings inside `<g id="excalidraw-content">`. Bound text isn't nested inside its container group. Arrows aren't grouped with their bound shapes.
-
-**Example — what current SVG looks like:**
-```xml
-<g id="excalidraw-content">
-  <g><!-- rectangle "src" --><path .../></g>
-  <g><!-- rectangle "dst" --><path .../></g>
-  <g><!-- arrow --><path d="M90 55 L150 55"/></g>
-  <text><!-- bound label --></text>
-</g>
-```
-
-**Example — what it should look like:**
-```xml
-<g id="excalidraw-content">
-  <g id="src" data-type="rectangle">
-    <path .../>
-    <g id="label1" data-type="text" data-bound-to="src">
-      <text ...>label</text>
-    </g>
-  </g>
-  <g id="dst" data-type="rectangle">
-    <path .../>
-  </g>
-  <g id="conn" data-type="arrow" data-start-binding="src" data-end-binding="dst">
-    <path d="M92 55 L148 55"/>
-    <path d="M136 60.4 L148 55 M148 55 L136 49.6"/>
-  </g>
-</g>
-```
+1. **Per-shape element IDs** — Rectangles, ellipses, diamonds, etc. still render as anonymous `<g>` wrappers. Only arrows currently emit `id` attributes.
+2. **No clipPath for frames** — Frames use `data-frame` attribute but don't apply SVG `<clipPath>` to clip children inside the frame boundary.
+3. **No semantic grouping** — Bound text isn't nested inside its container group; arrows aren't grouped with their bound shapes.
 
 ---
 

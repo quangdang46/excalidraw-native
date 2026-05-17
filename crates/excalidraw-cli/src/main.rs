@@ -1,5 +1,5 @@
 use std::fs;
-use std::io::{self, Read, Write};
+use std::io::{self, IsTerminal, Read, Write};
 use std::path::PathBuf;
 use std::process;
 
@@ -118,6 +118,10 @@ enum Commands {
     View {
         /// Input .excalidraw file path
         input: PathBuf,
+        /// Force one-shot non-interactive rendering (no pan/zoom keybindings).
+        /// Auto-enabled when stdin or stdout is not a TTY.
+        #[arg(long)]
+        no_interactive: bool,
     },
     /// Validate a .excalidraw file
     Validate {
@@ -544,9 +548,17 @@ fn main() -> Result<()> {
                 );
             }
         }
-        Commands::View { input } => {
+        Commands::View {
+            input,
+            no_interactive,
+        } => {
             let raw = read_input(&input)?;
-            excalidraw_tui::run_interactive(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+            let has_tty = io::stdin().is_terminal() && io::stdout().is_terminal();
+            if no_interactive || !has_tty {
+                excalidraw_tui::view_file(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+            } else {
+                excalidraw_tui::run_interactive(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+            }
         }
         Commands::Serve => {
             tokio::runtime::Runtime::new()?

@@ -34,6 +34,11 @@ pub enum ImageProtocol {
 }
 
 /// Detect the best available terminal image protocol.
+///
+/// Detection is intentionally conservative: protocols that the terminal
+/// only "might" support (e.g. `xterm-256color`, which generally does NOT
+/// natively support Sixel) fall through to halfblock so the user still
+/// sees a rendered image instead of an empty placeholder.
 pub fn detect_protocol() -> ImageProtocol {
     // Kitty: check TERM or kitty graphics query
     if std::env::var("TERM").is_ok_and(|t| t.starts_with("xterm-kitty"))
@@ -47,21 +52,29 @@ pub fn detect_protocol() -> ImageProtocol {
         return ImageProtocol::Iterm2;
     }
 
-    // Sixel: check TERM for xterm-256color or similar + check capability
+    // Sixel: only when there's a strong signal that the terminal actually
+    // implements DEC Sixel. `xterm-256color` alone is NOT a reliable signal
+    // (xterm typically needs to be compiled with --enable-sixel-graphics).
     if std::env::var("TERM").is_ok_and(|t| t.contains("sixel"))
-        || std::env::var("TERM").is_ok_and(|t| t == "xterm-256color")
+        || std::env::var("TERM_PROGRAM").is_ok_and(|p| p == "WezTerm" || p == "mlterm")
+        || std::env::var("VTE_VERSION")
+            .ok()
+            .and_then(|v| v.parse::<u32>().ok())
+            .is_some_and(|v| v >= 7400)
     {
         return ImageProtocol::Sixel;
     }
 
-    // Windows Terminal or modern terminals often support Sixel
+    // Windows Terminal supports Sixel as of v1.22+ when explicitly enabled.
     if std::env::var("WT_SESSION").is_ok() {
         return ImageProtocol::Sixel;
     }
 
-    // Fallback to halfblock if we have color support
+    // Fallback to halfblock for any terminal advertising true-color or
+    // 256-color support. Halfblock works everywhere and produces a real
+    // visible image; better that than printing unsupported Sixel.
     if std::env::var("COLORTERM").is_ok()
-        || std::env::var("TERM").is_ok_and(|t| t.contains("256color"))
+        || std::env::var("TERM").is_ok_and(|t| t.contains("color"))
     {
         return ImageProtocol::Halfblock;
     }
@@ -306,13 +319,42 @@ fn output_kitty(data: &[u8]) {
 }
 
 fn output_sixel(data: &[u8]) {
-    // Use ratatui-image's Sixel protocol if available
-    // For now, output a placeholder message since sixel encoding is complex
-    let _ = data;
-    print!("\x1bPq");
-    print!("\"1;1;{};{}", 80, 40);
-    print!("\x1b\\");
-    io::stdout().flush().ok();
+    // Decode the PNG, downscale so we don't flood the terminal, then encode
+    // as SIXEL via icy_sixel. On any failure we fall back to halfblock so the
+    // user still sees the rendered diagram instead of an empty escape sequence.
+    let img = match image::load_from_memory(data) {
+        Ok(img) => img,
+        Err(error) => {
+            eprintln!("Sixel decode error: {error}");
+            output_halfblock(data);
+            return;
+        }
+    };
+    let img = img.resize(800, 600, image::imageops::FilterType::Triangle);
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    let image = match icy_sixel::SixelImage::try_from_rgba(
+        rgba.into_raw(),
+        width as usize,
+        height as usize,
+    ) {
+        Ok(image) => image,
+        Err(error) => {
+            eprintln!("Sixel encode error: {error}");
+            output_halfblock(data);
+            return;
+        }
+    };
+    match image.encode() {
+        Ok(sixel) => {
+            print!("{sixel}");
+            io::stdout().flush().ok();
+        }
+        Err(error) => {
+            eprintln!("Sixel encode error: {error}");
+            output_halfblock(data);
+        }
+    }
 }
 
 fn output_iterm2(data: &[u8]) {

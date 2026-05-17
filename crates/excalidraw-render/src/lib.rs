@@ -689,11 +689,13 @@ fn render_element(
             linear,
             normalized.abs_points.as_deref(),
             false,
+            scene,
         )),
         Element::Arrow(linear) => nodes_only(render_linear(
             linear,
             normalized.abs_points.as_deref(),
             true,
+            scene,
         )),
         Element::Text(text) if options.text_policy == TextPolicy::SvgText => {
             nodes_only(render_text(text, scene, fonts))
@@ -734,12 +736,50 @@ fn render_linear(
     linear: &LinearElement,
     abs_points: Option<&[Point]>,
     include_heads: bool,
+    scene: &Scene,
 ) -> Vec<SvgNode> {
-    let Some(points) = abs_points.filter(|points| points.len() >= 2) else {
+    let Some(raw_points) = abs_points.filter(|points| points.len() >= 2) else {
         return Vec::new();
     };
+
+    // Apply binding-aware endpoint adjustment so that arrows visually attach
+    // to the boundary of bound shapes (and respect the configured gap).
+    let mut points: Vec<Point> = raw_points.to_vec();
+    if let Some(binding) = &linear.start_binding {
+        if let Some(adjusted) =
+            binding_endpoint(binding, points[0], points[1], BindingEnd::Start, scene)
+        {
+            points[0] = adjusted;
+        }
+    }
+    if let Some(binding) = &linear.end_binding {
+        let len = points.len();
+        if let Some(adjusted) = binding_endpoint(
+            binding,
+            points[len - 1],
+            points[len - 2],
+            BindingEnd::End,
+            scene,
+        ) {
+            points[len - 1] = adjusted;
+        }
+    }
+
     let style = RenderStyle::from_base(&linear.base);
     let mut group = SvgNode::new("g");
+    if !linear.base.id.is_empty() {
+        group = group.attr("id", linear.base.id.clone());
+    }
+    if let Some(binding) = &linear.start_binding {
+        if !binding.element_id.is_empty() {
+            group = group.attr("data-start-binding", binding.element_id.clone());
+        }
+    }
+    if let Some(binding) = &linear.end_binding {
+        if !binding.element_id.is_empty() {
+            group = group.attr("data-end-binding", binding.element_id.clone());
+        }
+    }
     if let Some(transform) = &style.transform {
         group = group.attr("transform", transform);
     }
@@ -748,7 +788,7 @@ fn render_linear(
     }
 
     let mut path = SvgNode::new("path")
-        .attr("d", linear_path_data(points))
+        .attr("d", linear_path_data(&points))
         .attr("stroke", style.stroke.clone())
         .attr("stroke-width", style.stroke_width.to_string())
         .attr("fill", "none");
@@ -775,6 +815,133 @@ fn render_linear(
     }
 
     vec![group]
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum BindingEnd {
+    Start,
+    End,
+}
+
+/// Computes an adjusted arrow endpoint that lies on the bound shape's boundary,
+/// offset outward by the binding's configured `gap`.
+///
+/// `endpoint` is the current arrow endpoint (absolute coordinates) and
+/// `neighbor` is the next point along the arrow (used to derive the arrow's
+/// approach direction). Returns `None` when the bound element cannot be
+/// resolved or has zero area, in which case the original endpoint is kept.
+fn binding_endpoint(
+    binding: &excalidraw_core::ArrowBinding,
+    endpoint: Point,
+    neighbor: Point,
+    _which: BindingEnd,
+    scene: &Scene,
+) -> Option<Point> {
+    if binding.element_id.is_empty() {
+        return None;
+    }
+    let index = *scene.id_map.get(&binding.element_id)?;
+    let bound = scene.elements.get(index)?;
+    let (base, kind) = bound_shape_kind(&bound.element)?;
+    if base.width.abs() < f64::EPSILON || base.height.abs() < f64::EPSILON {
+        return None;
+    }
+
+    let cx = base.x + base.width / 2.0;
+    let cy = base.y + base.height / 2.0;
+
+    // Use the direction from the bound shape's center toward the arrow
+    // endpoint. This handles both start/end consistently because the endpoint
+    // is always on the shape side and the neighbor is on the opposite side.
+    let mut dx = endpoint.x - cx;
+    let mut dy = endpoint.y - cy;
+    if dx.hypot(dy) < f64::EPSILON {
+        // Endpoint is at the center — fall back to the direction from the
+        // neighbor toward the endpoint.
+        dx = endpoint.x - neighbor.x;
+        dy = endpoint.y - neighbor.y;
+    }
+    let length = dx.hypot(dy);
+    if length < f64::EPSILON {
+        return None;
+    }
+
+    let edge = shape_edge_intersection(kind, base, cx, cy, dx, dy)?;
+    let gap = binding.gap.unwrap_or(0.0).max(0.0);
+    let unit_x = dx / length;
+    let unit_y = dy / length;
+    Some(Point {
+        x: edge.x + unit_x * gap,
+        y: edge.y + unit_y * gap,
+    })
+}
+
+fn bound_shape_kind(element: &Element) -> Option<(&BaseElement, ShapeKind)> {
+    match element {
+        Element::Rectangle(shape) => Some((&shape.base, ShapeKind::Rectangle)),
+        Element::Ellipse(shape) => Some((&shape.base, ShapeKind::Ellipse)),
+        Element::Diamond(shape) => Some((&shape.base, ShapeKind::Diamond)),
+        Element::Image(image) => Some((&image.base, ShapeKind::Rectangle)),
+        Element::Frame(frame) | Element::MagicFrame(frame) => {
+            Some((&frame.base, ShapeKind::Rectangle))
+        }
+        Element::Text(text) => Some((&text.base, ShapeKind::Rectangle)),
+        _ => None,
+    }
+}
+
+/// Returns the point at which a ray from `(cx, cy)` in direction `(dx, dy)`
+/// exits the bound shape. The shape is assumed to be axis-aligned in its
+/// local frame; rotation is currently ignored (consistent with the rest of
+/// the renderer, which applies rotation via SVG `transform`).
+fn shape_edge_intersection(
+    kind: ShapeKind,
+    base: &BaseElement,
+    cx: f64,
+    cy: f64,
+    dx: f64,
+    dy: f64,
+) -> Option<Point> {
+    let half_w = (base.width.abs() / 2.0).max(f64::EPSILON);
+    let half_h = (base.height.abs() / 2.0).max(f64::EPSILON);
+    let t = match kind {
+        ShapeKind::Rectangle => {
+            let tx = if dx.abs() > f64::EPSILON {
+                half_w / dx.abs()
+            } else {
+                f64::INFINITY
+            };
+            let ty = if dy.abs() > f64::EPSILON {
+                half_h / dy.abs()
+            } else {
+                f64::INFINITY
+            };
+            tx.min(ty)
+        }
+        ShapeKind::Ellipse => {
+            let nx = dx / half_w;
+            let ny = dy / half_h;
+            let denom = (nx * nx + ny * ny).sqrt();
+            if denom < f64::EPSILON {
+                return None;
+            }
+            1.0 / denom
+        }
+        ShapeKind::Diamond => {
+            let denom = dx.abs() / half_w + dy.abs() / half_h;
+            if denom < f64::EPSILON {
+                return None;
+            }
+            1.0 / denom
+        }
+    };
+    if !t.is_finite() {
+        return None;
+    }
+    Some(Point {
+        x: cx + dx * t,
+        y: cy + dy * t,
+    })
 }
 
 fn render_text(text: &TextElement, scene: &Scene, fonts: &FontRegistry) -> Vec<SvgNode> {
