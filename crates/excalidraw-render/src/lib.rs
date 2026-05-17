@@ -633,7 +633,10 @@ struct RenderedElement {
     nodes: Vec<SvgNode>,
 }
 
-fn frame_clip_for_child(normalized: &NormalizedElement, scene: &Scene) -> Option<(String, SvgNode)> {
+fn frame_clip_for_child(
+    normalized: &NormalizedElement,
+    scene: &Scene,
+) -> Option<(String, SvgNode)> {
     let frame_id = normalized.frame_id.as_ref()?;
     let frame_index = *scene.id_map.get(frame_id)?;
     let frame = match &scene.elements.get(frame_index)?.element {

@@ -66,7 +66,7 @@ Target v0.1 features:
 | CLI binary | `excd` |
 | Terminal preview | Planned |
 | MCP server | Planned |
-| Mermaid → Excalidraw | v0.2 |
+| Mermaid → Excalidraw | v0.2 (alpha — Tier 1 flowchart / sequence / class / state / ER) |
 
 ---
 
@@ -221,9 +221,9 @@ excalidraw-native/
 Consumer crates must not duplicate rendering logic. Rendering behavior belongs in `excalidraw-core` and `excalidraw-render`.
 
 The workspace root intentionally has no `src/` directory. It only coordinates
-the publishable crates and shared dependencies. During local co-development,
-`excalidraw-render` depends on `rough-rs` through `../rough-rs`; release work
-switches that dependency to the published crate version.
+the publishable crates and shared dependencies. `excalidraw-render` depends on
+the published [`rough-rs`](https://crates.io/crates/rough-rs) crate; no local
+path dependency is required to build.
 
 ---
 
@@ -351,27 +351,105 @@ agent reviews or attaches PNG/SVG output
 
 ---
 
-## Mermaid roadmap
+## Mermaid → Excalidraw (v0.2 alpha)
 
-Mermaid support is planned for v0.2.
-
-The goal is:
+The v0.2 line adds first-class Mermaid support through the new
+[`excalidraw-mermaid`](crates/excalidraw-mermaid) crate. The full pipeline is:
 
 ```text
 Mermaid text
-    → merman parse/layout
-    → Excalidraw elements
+    → merman-core parse
+    → merman-render layout
+    → excalidraw-mermaid convert
     → excalidraw-native renderer
-    → SVG/PNG
+    → SVG / PNG / .excalidraw
 ```
 
-v0.2 should be implemented as a separate crate, for example:
+Tier 1 diagrams (covered by integration tests):
 
-```text
-crates/excalidraw-mermaid/
+| Mermaid diagram | Excalidraw mapping |
+|---|---|
+| `flowchart` / `graph` | Rectangle, rounded rect, ellipse, diamond nodes; subgraphs → frames; arrows with explicit arrowheads, dashed/dotted strokes, edge labels |
+| `sequenceDiagram` | Lifelines as rectangles + vertical guide lines, messages as arrows with labels |
+| `classDiagram` | Class boxes with name + members, inheritance/composition/aggregation arrowheads |
+| `stateDiagram` / `stateDiagram-v2` | Rounded-rect states, start/end pseudo-states, composite states → frames |
+| `erDiagram` | Entity rectangles with attribute list, cardinality arrowheads (`one`, `many`, `zero_or_one`, `zero_or_many`, `crowfoot`) |
+
+Unsupported diagram types fall back to either:
+
+- a placeholder rectangle with the raw Mermaid source (default), or
+- a structured `MermaidConvertError::UnsupportedDiagram` when
+  `OnUnsupported::Error` is requested.
+
+### CLI
+
+```bash
+# Convert Mermaid to a .excalidraw scene (file → file, file → stdout, stdin → stdout):
+excd mermaid-to-excalidraw input.mmd -o out.excalidraw
+cat input.mmd | excd mermaid-to-excalidraw -
+
+# One-shot Mermaid → SVG / PNG / .excalidraw (format inferred from extension):
+excd mermaid input.mmd out.svg
+excd mermaid input.mmd out.png --scale 2 --padding 24
+excd mermaid input.mmd out.excalidraw --curve basis --font-size 14
 ```
 
-v0.1 should remain focused on rendering existing `.excalidraw` files correctly.
+Useful flags:
+
+| Flag | Effect |
+|---|---|
+| `--font-size <n>` | Label font size (default `16`) |
+| `--curve linear|basis` | Flowchart edge curve style |
+| `--on-unsupported placeholder|error` | Fallback behaviour for unsupported diagrams |
+| `--max-edges <n>` | Safety cap for large diagrams (default `5000`) |
+| `--warnings text|json|none` | Renderer warning output mode (`mermaid` subcommand only) |
+
+### MCP
+
+The MCP server exposes a `mermaid_to_excalidraw` tool that takes either
+`source` (inline text) or `path` (file path) plus the same conversion options.
+It returns a JSON payload of the form:
+
+```json
+{
+  "excalidraw": "{ ... full .excalidraw document ... }",
+  "element_count": 12
+}
+```
+
+Feed the `excalidraw` string into the existing `parse_elements`, `to_svg`,
+or `render_file` tools to continue the pipeline.
+
+### Rust API
+
+```rust
+use excalidraw_mermaid::{
+    parse_to_excalidraw_file, FlowchartCurve, MermaidConvertOptions, OnUnsupported,
+};
+
+fn main() -> anyhow::Result<()> {
+    let src = std::fs::read_to_string("diagram.mmd")?;
+    let file = parse_to_excalidraw_file(
+        &src,
+        &MermaidConvertOptions {
+            font_size: 16.0,
+            flowchart_curve: FlowchartCurve::Linear,
+            max_edges: 5_000,
+            max_text_size: 4_096,
+            on_unsupported: OnUnsupported::Placeholder,
+            hachure_fill: false,
+        },
+    )?;
+    let scene = excalidraw_core::normalize_file(&file);
+    let opts = excalidraw_render::RenderOptions::default();
+    let svg = excalidraw_render::render_svg(&scene, &opts)?;
+    std::fs::write("diagram.svg", svg.value.as_bytes())?;
+    Ok(())
+}
+```
+
+v0.1 remains focused on rendering existing `.excalidraw` files; the Mermaid
+layer is additive and shares the same SVG/PNG backend.
 
 ---
 
