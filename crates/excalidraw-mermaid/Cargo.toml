@@ -17,3 +17,9 @@ thiserror.workspace = true
 
 [dev-dependencies]
 excalidraw-render = { path = "../excalidraw-render" }
+excalidraw-core = { path = "../excalidraw-core" }
+criterion.workspace = true
+
+[[bench]]
+name = "mermaid_bench"
+harness = false

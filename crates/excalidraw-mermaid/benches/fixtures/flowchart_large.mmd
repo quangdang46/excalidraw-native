@@ -1,0 +1,79 @@
+flowchart TD
+    subgraph Frontend
+        A1[React App] --> A2[State Manager]
+        A2 --> A3[API Client]
+        A3 --> A4[WebSocket Client]
+        A1 --> A5[Router]
+        A5 --> A6[Auth Guard]
+        A6 --> A7[Dashboard]
+        A6 --> A8[Settings]
+        A6 --> A9[Reports]
+    end
+    subgraph Gateway
+        B1[Load Balancer] --> B2[Rate Limiter]
+        B2 --> B3[Auth Middleware]
+        B3 --> B4[Request Router]
+        B4 --> B5[Response Cache]
+        B5 --> B6[Compression]
+    end
+    subgraph UserService
+        C1[User Controller] --> C2[User Service]
+        C2 --> C3[User Repository]
+        C3 --> C4[(PostgreSQL)]
+        C2 --> C5[Session Store]
+        C5 --> C6[(Redis)]
+        C2 --> C7[Profile Service]
+        C7 --> C8[Avatar Storage]
+        C8 --> C9[(S3 Bucket)]
+    end
+    subgraph OrderService
+        D1[Order Controller] --> D2[Order Service]
+        D2 --> D3[Order Repository]
+        D3 --> D4[(MongoDB)]
+        D2 --> D5[Cart Service]
+        D5 --> D6[Price Calculator]
+        D6 --> D7[Discount Engine]
+        D7 --> D8[Coupon Validator]
+        D2 --> D9[Fulfillment]
+        D9 --> D10[Shipping Calculator]
+        D10 --> D11[Carrier API]
+    end
+    subgraph PaymentService
+        E1[Payment Controller] --> E2[Payment Processor]
+        E2 --> E3[Stripe Gateway]
+        E2 --> E4[PayPal Gateway]
+        E2 --> E5[Crypto Gateway]
+        E3 --> E6[Webhook Handler]
+        E4 --> E6
+        E5 --> E6
+        E6 --> E7[Transaction Log]
+        E7 --> E8[(TimescaleDB)]
+    end
+    subgraph Analytics
+        F1[Event Collector] --> F2[Stream Processor]
+        F2 --> F3[Kafka Topic]
+        F3 --> F4[Spark Job]
+        F4 --> F5[(Data Lake)]
+        F5 --> F6[Report Generator]
+        F6 --> F7[Dashboard API]
+    end
+    subgraph Monitoring
+        G1[Prometheus] --> G2[Alertmanager]
+        G2 --> G3[PagerDuty]
+        G2 --> G4[Slack Bot]
+        G1 --> G5[Grafana]
+        G5 --> G6[Dashboard]
+    end
+    A3 --> B1
+    A4 --> B1
+    B4 --> C1
+    B4 --> D1
+    B4 --> E1
+    D2 --> E1
+    E6 --> D9
+    C2 --> F1
+    D2 --> F1
+    E2 --> F1
+    G1 --> C1
+    G1 --> D1
+    G1 --> E1

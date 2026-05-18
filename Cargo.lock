@@ -1107,6 +1107,7 @@ dependencies = [
 name = "excalidraw-mermaid"
 version = "0.1.0"
 dependencies = [
+ "criterion",
  "excalidraw-core",
  "excalidraw-render",
  "merman-core",

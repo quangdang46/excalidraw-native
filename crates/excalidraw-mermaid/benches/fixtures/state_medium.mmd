@@ -1,0 +1,16 @@
+stateDiagram-v2
+    [*] --> Idle
+    Idle --> Connecting : connect
+    Connecting --> Connected : success
+    Connecting --> Error : timeout
+    Connected --> Authenticating : login
+    Authenticating --> Authenticated : valid
+    Authenticating --> Error : invalid
+    Authenticated --> Active : ready
+    Active --> Processing : request
+    Processing --> Active : complete
+    Processing --> Error : failure
+    Active --> Disconnecting : logout
+    Disconnecting --> Idle : done
+    Error --> Idle : reset
+    Error --> [*] : fatal
