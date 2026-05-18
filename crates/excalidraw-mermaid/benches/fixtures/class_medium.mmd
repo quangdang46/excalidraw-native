@@ -1,0 +1,57 @@
+classDiagram
+    class Application {
+        +Config config
+        +Logger logger
+        +start() void
+        +stop() void
+    }
+    class Config {
+        +String dbUrl
+        +int port
+        +load() Config
+        +validate() bool
+    }
+    class Logger {
+        +LogLevel level
+        +info(msg) void
+        +error(msg) void
+        +debug(msg) void
+    }
+    class Router {
+        +Route[] routes
+        +addRoute(path, handler) void
+        +match(request) Handler
+    }
+    class Controller {
+        +Service service
+        +handle(req) Response
+        +validate(req) bool
+    }
+    class Service {
+        +Repository repo
+        +create(data) Entity
+        +update(id, data) Entity
+        +delete(id) bool
+        +findAll() Entity[]
+    }
+    class Repository {
+        +Connection conn
+        +insert(entity) void
+        +update(entity) void
+        +delete(id) void
+        +findById(id) Entity
+        +findAll() Entity[]
+    }
+    class Connection {
+        +String url
+        +connect() void
+        +disconnect() void
+        +query(sql) Result
+    }
+    Application --> Config
+    Application --> Logger
+    Application --> Router
+    Router --> Controller
+    Controller --> Service
+    Service --> Repository
+    Repository --> Connection

@@ -1,0 +1,25 @@
+sequenceDiagram
+    participant Client
+    participant Gateway
+    participant Auth
+    participant UserSvc
+    participant OrderSvc
+    participant PaymentSvc
+    participant NotifySvc
+    participant DB
+
+    Client->>Gateway: POST /orders
+    Gateway->>Auth: Validate token
+    Auth-->>Gateway: Token valid
+    Gateway->>OrderSvc: Create order
+    OrderSvc->>DB: Check inventory
+    DB-->>OrderSvc: Items available
+    OrderSvc->>PaymentSvc: Process payment
+    PaymentSvc->>PaymentSvc: Validate card
+    PaymentSvc-->>OrderSvc: Payment confirmed
+    OrderSvc->>DB: Save order
+    DB-->>OrderSvc: Order saved
+    OrderSvc->>NotifySvc: Send confirmation
+    NotifySvc->>Client: Email sent
+    OrderSvc-->>Gateway: Order created
+    Gateway-->>Client: 201 Created

@@ -1,0 +1,31 @@
+flowchart TD
+    A[User Request] --> B{Authentication}
+    B -->|Valid| C[Load Balancer]
+    B -->|Invalid| D[Error Page]
+    C --> E[API Gateway]
+    E --> F{Route Parser}
+    F -->|/users| G[User Service]
+    F -->|/orders| H[Order Service]
+    F -->|/payments| I[Payment Service]
+    F -->|/notifications| J[Notification Service]
+    G --> K[(User DB)]
+    G --> L[(Redis Cache)]
+    H --> M[(Order DB)]
+    H --> N[Inventory Check]
+    N --> O{In Stock?}
+    O -->|Yes| P[Process Order]
+    O -->|No| Q[Backorder]
+    P --> I
+    I --> R[Payment Gateway]
+    R --> S{Payment OK?}
+    S -->|Yes| T[Confirm Order]
+    S -->|No| U[Retry Payment]
+    U --> R
+    T --> J
+    J --> V[Email Service]
+    J --> W[SMS Service]
+    J --> X[Push Notification]
+    V --> Y[Success Response]
+    W --> Y
+    X --> Y
+    Q --> J
