@@ -1,0 +1,80 @@
+   Compiling rand_chacha v0.3.1
+   Compiling rav1e v0.8.1
+   Compiling tokio v1.52.3
+   Compiling getrandom v0.4.2
+   Compiling time v0.3.47
+   Compiling rand v0.8.6
+   Compiling usvg v0.47.0
+   Compiling ratatui-widgets v0.3.0
+   Compiling ravif v0.13.0
+   Compiling image v0.25.10
+   Compiling crossterm v0.29.0
+   Compiling uuid v1.23.1
+   Compiling merman-core v0.4.0
+   Compiling quantette v0.5.1
+   Compiling resvg v0.47.0
+   Compiling roughr-merman v0.12.0
+   Compiling ratatui-crossterm v0.1.0
+   Compiling rough-rs v0.1.0
+   Compiling ratatui-macros v0.7.0
+   Compiling merman-render v0.4.0
+   Compiling ratatui v0.30.0
+   Compiling excalidraw-render v0.1.0 (/data/projects/excalidraw-native/crates/excalidraw-render)
+   Compiling process-wrap v9.1.0
+   Compiling icy_sixel v0.5.0
+   Compiling tokio-util v0.7.18
+   Compiling tokio-stream v0.1.18
+   Compiling ratatui-image v11.0.2
+   Compiling rmcp v1.7.0
+   Compiling excalidraw-mermaid v0.1.0 (/data/projects/excalidraw-native/crates/excalidraw-mermaid)
+   Compiling float-cmp v0.10.0
+   Compiling excalidraw-mcp v0.1.0 (/data/projects/excalidraw-native/crates/excalidraw-mcp)
+   Compiling predicates v3.1.4
+   Compiling excalidraw-tui v0.1.0 (/data/projects/excalidraw-native/crates/excalidraw-tui)
+   Compiling plotters v0.3.7
+   Compiling tinytemplate v1.2.1
+   Compiling criterion v0.5.1
+   Compiling tempfile v3.27.0
+   Compiling assert_cmd v2.2.2
+   Compiling excalidraw-cli v0.1.0 (/data/projects/excalidraw-native/crates/excalidraw-cli)
+    Finished `bench` profile [optimized] target(s) in 14m 36s
+     Running benches/cli_e2e.rs (target/release/deps/cli_e2e-66790f2fe7e5eb79)
+Gnuplot not found, using plotters backend
+bench-target group=cli_e2e case=simple_svg_file_io target_ms=120 fail_ms=1200 mode=soft-warning
+Benchmarking cli_e2e/to-svg/simple_svg_file_io target=120ms fail=1200ms
+Benchmarking cli_e2e/to-svg/simple_svg_file_io target=120ms fail=1200ms: Warming up for 3.0000 s
+Benchmarking cli_e2e/to-svg/simple_svg_file_io target=120ms fail=1200ms: Collecting 10 samples in estimated 6.0403 s (165 iterations)
+Benchmarking cli_e2e/to-svg/simple_svg_file_io target=120ms fail=1200ms: Analyzing
+cli_e2e/to-svg/simple_svg_file_io target=120ms fail=1200ms
+                        time:   [32.259 ms 35.711 ms 38.334 ms]
+                        change: [-11.919% -5.6802% +1.9043%] (p = 0.29 > 0.05)
+                        No change in performance detected.
+bench-target group=cli_e2e case=complex_svg_file_io target_ms=160 fail_ms=1600 mode=soft-warning
+Benchmarking cli_e2e/to-svg/complex_svg_file_io target=160ms fail=1600ms
+Benchmarking cli_e2e/to-svg/complex_svg_file_io target=160ms fail=1600ms: Warming up for 3.0000 s
+Benchmarking cli_e2e/to-svg/complex_svg_file_io target=160ms fail=1600ms: Collecting 10 samples in estimated 5.6503 s (165 iterations)
+Benchmarking cli_e2e/to-svg/complex_svg_file_io target=160ms fail=1600ms: Analyzing
+cli_e2e/to-svg/complex_svg_file_io target=160ms fail=1600ms
+                        time:   [32.763 ms 34.185 ms 35.927 ms]
+                        change: [-60.930% -58.035% -55.433%] (p = 0.01 < 0.05)
+                        Performance has improved.
+bench-target group=cli_e2e case=large_svg_file_io target_ms=350 fail_ms=3500 mode=soft-warning
+Benchmarking cli_e2e/to-svg/large_svg_file_io target=350ms fail=3500ms
+Benchmarking cli_e2e/to-svg/large_svg_file_io target=350ms fail=3500ms: Warming up for 3.0000 s
+Benchmarking cli_e2e/to-svg/large_svg_file_io target=350ms fail=3500ms: Collecting 10 samples in estimated 6.3445 s (110 iterations)
+Benchmarking cli_e2e/to-svg/large_svg_file_io target=350ms fail=3500ms: Analyzing
+cli_e2e/to-svg/large_svg_file_io target=350ms fail=3500ms
+                        time:   [63.004 ms 67.879 ms 72.679 ms]
+                        change: [-8.3338% +3.7427% +18.964%] (p = 0.71 > 0.05)
+                        No change in performance detected.
+
+bench-target group=cli_e2e case=info_startup_json target_ms=80 fail_ms=800 mode=soft-warning
+Benchmarking cli_e2e/info/info_startup_json target=80ms fail=800ms
+Benchmarking cli_e2e/info/info_startup_json target=80ms fail=800ms: Warming up for 3.0000 s
+Benchmarking cli_e2e/info/info_startup_json target=80ms fail=800ms: Collecting 10 samples in estimated 5.4306 s (605 iterations)
+Benchmarking cli_e2e/info/info_startup_json target=80ms fail=800ms: Analyzing
+cli_e2e/info/info_startup_json target=80ms fail=800ms
+                        time:   [8.3266 ms 8.7265 ms 8.9996 ms]
+                        change: [+17.758% +23.708% +29.579%] (p = 0.01 < 0.05)
+                        Performance has regressed.
+

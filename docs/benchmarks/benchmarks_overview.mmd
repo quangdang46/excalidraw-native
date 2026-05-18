@@ -1,0 +1,41 @@
+flowchart LR
+    subgraph Core["excalidraw-core (median)"]
+        P1["parse simple<br/>11.8 us"]
+        P2["parse 200 elem<br/>915 us"]
+        N1["normalize simple<br/>3.9 us"]
+        N2["normalize 200 elem<br/>303 us"]
+    end
+
+    subgraph Render["excalidraw-render (median)"]
+        S1["svg simple 3<br/>7.4 ms"]
+        S2["svg complex 8<br/>14.8 ms"]
+        S3["svg large 200<br/>35.2 ms"]
+        PG1["png simple 3<br/>10.0 ms"]
+        PG2["png large 200<br/>101.6 ms"]
+    end
+
+    subgraph Mermaid["excalidraw-mermaid e2e (median)"]
+        M1["flowchart tiny<br/>1.55 ms"]
+        M2["flowchart medium<br/>16.2 ms"]
+        M3["flowchart large<br/>70.6 ms"]
+        M4["sequence medium<br/>6.2 ms"]
+        M5["state medium<br/>15.2 ms"]
+    end
+
+    subgraph CLI["excd CLI process (median)"]
+        C1["info json<br/>8.7 ms"]
+        C2["to-svg simple<br/>35.7 ms"]
+        C3["to-svg complex<br/>34.2 ms"]
+        C4["to-svg large<br/>67.9 ms"]
+    end
+
+    subgraph MCP["excd MCP stdio (median)"]
+        X1["parse_elements<br/>16.0 ms"]
+        X2["describe_scene<br/>17.8 ms"]
+        X3["validate large<br/>20.1 ms"]
+    end
+
+    P1 --> N1 --> S1 --> C1
+    P2 --> N2 --> S3 --> C4
+    M1 --> M2 --> M3
+    X1 --> X2 --> X3
