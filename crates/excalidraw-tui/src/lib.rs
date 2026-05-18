@@ -84,41 +84,31 @@ pub fn resolve_protocol(force: Option<ImageProtocol>) -> ImageProtocol {
 /// natively support Sixel) fall through to halfblock so the user still
 /// sees a rendered image instead of an empty placeholder.
 pub fn detect_protocol() -> ImageProtocol {
-    // Kitty: check TERM or kitty graphics query
+    // Kitty: hard signal only.
     if std::env::var("TERM").is_ok_and(|t| t.starts_with("xterm-kitty"))
         || std::env::var("KITTY_WINDOW_ID").is_ok()
     {
         return ImageProtocol::Kitty;
     }
 
-    // iTerm2: check TERM_PROGRAM
+    // iTerm2: hard signal only.
     if std::env::var("TERM_PROGRAM").is_ok_and(|p| p == "iTerm.app") {
         return ImageProtocol::Iterm2;
     }
 
-    // Sixel: only when there's a strong signal that the terminal actually
-    // implements DEC Sixel. `xterm-256color` alone is NOT a reliable signal
-    // (xterm typically needs to be compiled with --enable-sixel-graphics).
-    if std::env::var("TERM").is_ok_and(|t| t.contains("sixel"))
-        || std::env::var("TERM_PROGRAM").is_ok_and(|p| p == "WezTerm" || p == "mlterm")
-        || std::env::var("VTE_VERSION")
-            .ok()
-            .and_then(|v| v.parse::<u32>().ok())
-            .is_some_and(|v| v >= 7400)
-    {
+    // Sixel: only when TERM itself advertises sixel. Heuristics like
+    // `TERM_PROGRAM=WezTerm`, `WT_SESSION`, or `VTE_VERSION` are NOT enough:
+    // those terminals only render Sixel when explicitly enabled in config,
+    // and a wrong guess paints the user an invisible blob of escape codes.
+    // Force with `--protocol sixel` or `EXCD_VIEW_PROTOCOL=sixel` instead.
+    if std::env::var("TERM").is_ok_and(|t| t.contains("sixel")) {
         return ImageProtocol::Sixel;
     }
 
-    // Windows Terminal supports Sixel as of v1.22+ when explicitly enabled.
-    if std::env::var("WT_SESSION").is_ok() {
-        return ImageProtocol::Sixel;
-    }
-
-    // Fallback to halfblock for any terminal advertising true-color or
-    // 256-color support. Halfblock works everywhere and produces a real
-    // visible image; better that than printing unsupported Sixel.
+    // Halfblock works on any truecolor / 256-color terminal and always
+    // produces a visible image, so it is the safe default.
     if std::env::var("COLORTERM").is_ok()
-        || std::env::var("TERM").is_ok_and(|t| t.contains("color"))
+        || std::env::var("TERM").is_ok_and(|t| t.contains("color") || t == "screen" || t == "tmux")
     {
         return ImageProtocol::Halfblock;
     }
@@ -425,29 +415,41 @@ fn output_iterm2(data: &[u8]) {
 }
 
 fn output_halfblock(data: &[u8]) {
-    // Decode PNG and render as halfblock characters
-    let img = image::load_from_memory(data);
-    match img {
-        Ok(img) => {
-            let img = img.resize(120, 60, image::imageops::FilterType::Nearest);
-            let rgb = img.to_rgb8();
-            let (w, h) = rgb.dimensions();
-            for y in (0..h).step_by(2) {
-                for x in 0..w {
-                    let upper = rgb.get_pixel(x, y);
-                    let lower = rgb.get_pixel(x, (y + 1).min(h - 1));
-                    print!(
-                        "\x1b[38;2;{};{};{};48;2;{};{};{}m\u{2580}",
-                        upper[0], upper[1], upper[2], lower[0], lower[1], lower[2],
-                    );
-                }
-                println!("\x1b[0m");
-            }
-        }
+    // Decode PNG and render as halfblock characters. Each terminal cell
+    // shows two pixels (upper/lower) via U+2580 with foreground+background.
+    // We size the image to the actual terminal viewport so we never
+    // overflow the screen on small panes.
+    let img = match image::load_from_memory(data) {
+        Ok(img) => img,
         Err(e) => {
             println!("Image decode error: {e}");
+            return;
         }
+    };
+    let (cols, rows) = match crossterm::terminal::size() {
+        Ok((c, r)) => (c.max(20) as u32, r.max(8) as u32),
+        Err(_) => (120, 60),
+    };
+    // Reserve the bottom 2 rows for the status line.
+    let target_w = cols;
+    let target_h = rows.saturating_sub(2).max(4) * 2; // 2 pixels per row
+    let img = img.resize(target_w, target_h, image::imageops::FilterType::Triangle);
+    let rgb = img.to_rgb8();
+    let (w, h) = rgb.dimensions();
+    let mut out = io::stdout().lock();
+    for y in (0..h).step_by(2) {
+        for x in 0..w {
+            let upper = rgb.get_pixel(x, y);
+            let lower = rgb.get_pixel(x, (y + 1).min(h - 1));
+            let _ = write!(
+                out,
+                "\x1b[38;2;{};{};{};48;2;{};{};{}m\u{2580}",
+                upper[0], upper[1], upper[2], lower[0], lower[1], lower[2],
+            );
+        }
+        let _ = writeln!(out, "\x1b[0m");
     }
+    let _ = out.flush();
 }
 
 #[cfg(test)]

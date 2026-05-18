@@ -126,10 +126,22 @@ excd validate diagram.excalidraw
 ### Preview in terminal
 
 ```bash
+# auto-detect protocol (kitty / sixel / iterm2 / halfblock fallback)
 excd view diagram.excalidraw
+
+# force a specific protocol if your terminal lies about its capabilities
+excd view diagram.excalidraw --protocol halfblock
+EXCD_VIEW_PROTOCOL=kitty excd view diagram.excalidraw
+
+# one-shot render (auto-enabled when stdout is not a TTY)
+excd view diagram.excalidraw --no-interactive
 ```
 
-Terminal preview is designed for Kitty, Sixel, iTerm2, and halfblock fallback modes.
+`excd view` prints the chosen protocol on stderr (`excd view: protocol=...`)
+and includes it in the interactive status line so you can tell when
+auto-detect is wrong. Auto-detect is conservative: it only emits Sixel
+when `TERM` itself contains `sixel`, otherwise it falls back to halfblock
+which works on any truecolor / 256-color terminal.
 
 ---
 
