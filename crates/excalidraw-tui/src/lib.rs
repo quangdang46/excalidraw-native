@@ -33,6 +33,50 @@ pub enum ImageProtocol {
     Ascii,
 }
 
+impl ImageProtocol {
+    /// Short label suitable for status lines.
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            ImageProtocol::Kitty => "kitty",
+            ImageProtocol::Sixel => "sixel",
+            ImageProtocol::Iterm2 => "iterm2",
+            ImageProtocol::Halfblock => "halfblock",
+            ImageProtocol::Ascii => "ascii",
+        }
+    }
+
+    /// Parse a protocol name from CLI/env input.
+    pub fn parse(name: &str) -> Result<Self, String> {
+        match name.to_ascii_lowercase().as_str() {
+            "auto" => Ok(detect_protocol()),
+            "kitty" => Ok(ImageProtocol::Kitty),
+            "sixel" => Ok(ImageProtocol::Sixel),
+            "iterm2" | "iterm" => Ok(ImageProtocol::Iterm2),
+            "halfblock" | "blocks" | "block" => Ok(ImageProtocol::Halfblock),
+            "ascii" | "none" => Ok(ImageProtocol::Ascii),
+            other => Err(format!(
+                "unknown protocol '{other}'; expected one of: auto, kitty, sixel, iterm2, halfblock, ascii"
+            )),
+        }
+    }
+}
+
+/// Resolve the protocol to use, honoring `EXCD_VIEW_PROTOCOL` when no
+/// explicit override is supplied.
+#[must_use]
+pub fn resolve_protocol(force: Option<ImageProtocol>) -> ImageProtocol {
+    if let Some(p) = force {
+        return p;
+    }
+    if let Ok(env) = std::env::var("EXCD_VIEW_PROTOCOL") {
+        if let Ok(p) = ImageProtocol::parse(&env) {
+            return p;
+        }
+    }
+    detect_protocol()
+}
+
 /// Detect the best available terminal image protocol.
 ///
 /// Detection is intentionally conservative: protocols that the terminal
@@ -174,9 +218,15 @@ pub fn render_to_svg(content: &str, state: &ViewState) -> Result<String, String>
 /// using the best available protocol. For interactive mode with pan/zoom,
 /// use the `view` CLI command.
 pub fn view_file(content: &str) -> Result<(), String> {
-    let protocol = detect_protocol();
+    view_file_with(content, None)
+}
+
+/// Same as [`view_file`] but allows forcing a specific protocol.
+pub fn view_file_with(content: &str, force: Option<ImageProtocol>) -> Result<(), String> {
+    let protocol = resolve_protocol(force);
     let state = ViewState::default();
     let png_data = render_to_png(content, &state)?;
+    eprintln!("excd view: protocol={}", protocol.label());
 
     match protocol {
         ImageProtocol::Kitty => output_kitty(&png_data),
@@ -195,11 +245,19 @@ pub fn view_file(content: &str) -> Result<(), String> {
 
 /// Run interactive viewer with keyboard controls.
 pub fn run_interactive(content: &str) -> Result<(), String> {
+    run_interactive_with(content, None)
+}
+
+/// Same as [`run_interactive`] but allows forcing a specific protocol.
+pub fn run_interactive_with(
+    content: &str,
+    force: Option<ImageProtocol>,
+) -> Result<(), String> {
     use crossterm::event::{self, Event, KeyCode};
     use crossterm::terminal;
 
     let mut state = ViewState::default();
-    let protocol = detect_protocol();
+    let protocol = resolve_protocol(force);
 
     terminal::enable_raw_mode().map_err(|e| format!("Terminal error: {e}"))?;
     let _guard = scopeguard::guard((), |_| {
@@ -291,10 +349,11 @@ fn display_image(png_data: &[u8], protocol: ImageProtocol, state: &ViewState) {
         }
     }
     println!(
-        "\nZoom: {:.0}% | Pan: {:.0},{:.0}",
+        "\nZoom: {:.0}% | Pan: {:.0},{:.0} | protocol: {}",
         state.zoom * 100.0,
         state.pan_x,
-        state.pan_y
+        state.pan_y,
+        protocol.label()
     );
     println!("q: quit | +/-: zoom | h/j/k/l: pan | r: reset | s: save PNG | e: save SVG");
     io::stdout().flush().ok();

@@ -122,6 +122,10 @@ enum Commands {
         /// Auto-enabled when stdin or stdout is not a TTY.
         #[arg(long)]
         no_interactive: bool,
+        /// Force a specific image protocol instead of auto-detect.
+        /// Also honors EXCD_VIEW_PROTOCOL.
+        #[arg(long, value_name = "PROTO")]
+        protocol: Option<String>,
     },
     /// Validate a .excalidraw file
     Validate {
@@ -551,13 +555,23 @@ fn main() -> Result<()> {
         Commands::View {
             input,
             no_interactive,
+            protocol,
         } => {
             let raw = read_input(&input)?;
             let has_tty = io::stdin().is_terminal() && io::stdout().is_terminal();
+            let force = match protocol.as_deref() {
+                Some(name) => Some(
+                    excalidraw_tui::ImageProtocol::parse(name)
+                        .map_err(|e| anyhow::anyhow!("{}", e))?,
+                ),
+                None => None,
+            };
             if no_interactive || !has_tty {
-                excalidraw_tui::view_file(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+                excalidraw_tui::view_file_with(&raw, force)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
             } else {
-                excalidraw_tui::run_interactive(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+                excalidraw_tui::run_interactive_with(&raw, force)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
             }
         }
         Commands::Serve => {
