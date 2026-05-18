@@ -520,6 +520,28 @@ cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 ```
 
+### Benchmarks
+
+Criterion benches live next to each crate and are driven from the workspace.
+See [BENCHMARKS.md](BENCHMARKS.md) for the latest baseline numbers, soft
+targets, environment, and an overview diagram self-rendered through `excd`.
+
+```bash
+# one-shot: build excd, run every Criterion bench, regenerate the diagram
+scripts/bench_all.sh
+
+# or a single crate:
+cargo bench -p excalidraw-core   --bench lib_bench
+cargo bench -p excalidraw-render --bench render_bench
+EXCD_RUN_CRITERION_BENCHES=1 \
+  cargo bench -p excalidraw-mermaid --bench mermaid_bench
+cargo bench -p excalidraw-cli    --bench cli_e2e
+cargo bench -p excalidraw-cli    --bench mcp_e2e
+```
+
+Raw Criterion logs are written to `docs/benchmarks/*.log` and HTML reports
+to `target/criterion/report/index.html`.
+
 ### Run CLI locally
 
 ```bash
