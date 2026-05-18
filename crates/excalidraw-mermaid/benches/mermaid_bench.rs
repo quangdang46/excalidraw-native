@@ -135,18 +135,14 @@ fn bench_mermaid_convert(c: &mut Criterion) {
     for name in BENCH_FIXTURES {
         let input = fixture(name);
         let layouted = layout_mermaid(input, &opts).expect("layout failed");
-        group.bench_with_input(
-            BenchmarkId::from_parameter(name),
-            &layouted,
-            |b, data| {
-                b.iter(|| {
-                    let file =
-                        excalidraw_mermaid::convert::convert_layouted_to_file(black_box(data), &opts)
-                            .expect("convert failed");
-                    black_box(file);
-                });
-            },
-        );
+        group.bench_with_input(BenchmarkId::from_parameter(name), &layouted, |b, data| {
+            b.iter(|| {
+                let file =
+                    excalidraw_mermaid::convert::convert_layouted_to_file(black_box(data), &opts)
+                        .expect("convert failed");
+                black_box(file);
+            });
+        });
     }
     group.finish();
 }
@@ -220,15 +216,22 @@ fn bench_mermaid_render_svg(c: &mut Criterion) {
     let mut group = c.benchmark_group("mermaid_render_svg");
     let opts = MermaidConvertOptions::default();
     let render_opts = excalidraw_render::RenderOptions::default();
-    for name in ["flowchart_tiny", "flowchart_small", "flowchart_medium", "sequence_tiny", "class_tiny", "state_tiny"] {
+    for name in [
+        "flowchart_tiny",
+        "flowchart_small",
+        "flowchart_medium",
+        "sequence_tiny",
+        "class_tiny",
+        "state_tiny",
+    ] {
         let input = fixture(name);
-        let file = excalidraw_mermaid::parse_to_excalidraw_file(input, &opts)
-            .expect("parse failed");
+        let file =
+            excalidraw_mermaid::parse_to_excalidraw_file(input, &opts).expect("parse failed");
         let scene = excalidraw_core::normalize_file(&file);
         group.bench_with_input(BenchmarkId::from_parameter(name), &scene, |b, data| {
             b.iter(|| {
-                let result =
-                    excalidraw_render::render_svg(black_box(data), &render_opts).expect("render failed");
+                let result = excalidraw_render::render_svg(black_box(data), &render_opts)
+                    .expect("render failed");
                 black_box(result.value.len());
             });
         });
@@ -264,7 +267,10 @@ fn smoke_validate_bench_inputs() {
             !elements.is_empty(),
             "dense_{nodes}_{extra_edges}: expected elements"
         );
-        eprintln!("  dense_{nodes}n_{extra_edges}e: {} elements OK", elements.len());
+        eprintln!(
+            "  dense_{nodes}n_{extra_edges}e: {} elements OK",
+            elements.len()
+        );
     }
 
     eprintln!("Validating SVG render pipeline...");
@@ -276,10 +282,7 @@ fn smoke_validate_bench_inputs() {
         let render_opts = excalidraw_render::RenderOptions::default();
         let result = excalidraw_render::render_svg(&scene, &render_opts)
             .unwrap_or_else(|e| panic!("{name}: SVG render failed: {e}"));
-        assert!(
-            result.value.contains("<svg"),
-            "{name}: expected SVG output"
-        );
+        assert!(result.value.contains("<svg"), "{name}: expected SVG output");
         eprintln!("  {name}: SVG {} bytes OK", result.value.len());
     }
 
