@@ -126,6 +126,11 @@ enum Commands {
         /// Also honors EXCD_VIEW_PROTOCOL.
         #[arg(long, value_name = "PROTO")]
         protocol: Option<String>,
+        /// Render-side supersampling factor for halfblock sharpness.
+        /// 1.0 renders at terminal-cell resolution; higher values render
+        /// the diagram at N x scale and downsample. Default 2.0.
+        #[arg(long, value_name = "FACTOR", default_value = "2.0")]
+        supersample: f64,
     },
     /// Validate a .excalidraw file
     Validate {
@@ -556,6 +561,7 @@ fn main() -> Result<()> {
             input,
             no_interactive,
             protocol,
+            supersample,
         } => {
             let raw = read_input(&input)?;
             let has_tty = io::stdin().is_terminal() && io::stdout().is_terminal();
@@ -566,11 +572,12 @@ fn main() -> Result<()> {
                 ),
                 None => None,
             };
+            let ss = supersample.max(1.0).min(8.0);
             if no_interactive || !has_tty {
-                excalidraw_tui::view_file_with(&raw, force)
+                excalidraw_tui::view_file_tuned(&raw, force, ss)
                     .map_err(|e| anyhow::anyhow!("{}", e))?;
             } else {
-                excalidraw_tui::run_interactive_with(&raw, force)
+                excalidraw_tui::run_interactive_tuned(&raw, force, ss)
                     .map_err(|e| anyhow::anyhow!("{}", e))?;
             }
         }

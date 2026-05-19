@@ -24,7 +24,7 @@ use ratatui::text::Line;
 use ratatui::widgets::{Block, Borders, Paragraph};
 use ratatui::Terminal;
 use ratatui_image::picker::{Picker, ProtocolType};
-use ratatui_image::{Image, Resize};
+use ratatui_image::{FilterType, Image, Resize};
 
 /// Current crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -120,6 +120,10 @@ pub struct ViewState {
     pub zoom: f64,
     pub pan_x: f64,
     pub pan_y: f64,
+    /// Render-side supersampling factor. Higher = sharper halfblock output
+    /// at the cost of CPU. 1.0 = render at terminal-cell resolution, 2.0 =
+    /// render at 2x resolution then let ratatui-image downsample.
+    pub supersample: f64,
 }
 
 impl Default for ViewState {
@@ -128,6 +132,7 @@ impl Default for ViewState {
             zoom: 1.0,
             pan_x: 0.0,
             pan_y: 0.0,
+            supersample: 2.0,
         }
     }
 }
@@ -157,7 +162,7 @@ impl ViewState {
 
     pub fn render_options(&self) -> RenderOptions {
         RenderOptions {
-            scale: self.zoom,
+            scale: self.zoom * self.supersample.max(1.0),
             padding: 16.0,
             background: excalidraw_render::BackgroundMode::FromFile,
             quality: excalidraw_render::RenderQuality::Full,
@@ -197,9 +202,20 @@ pub fn view_file(content: &str) -> Result<(), String> {
 }
 
 pub fn view_file_with(content: &str, force: Option<ImageProtocol>) -> Result<(), String> {
+    view_file_tuned(content, force, ViewState::default().supersample)
+}
+
+/// One-shot view with a custom supersampling factor for halfblock sharpness.
+pub fn view_file_tuned(
+    content: &str,
+    force: Option<ImageProtocol>,
+    supersample: f64,
+) -> Result<(), String> {
     let requested = force.unwrap_or(ImageProtocol::Auto);
+    let mut state = ViewState::default();
+    state.supersample = supersample.max(1.0);
     if matches!(requested, ImageProtocol::Ascii) {
-        let png = render_to_png(content, &ViewState::default())?;
+        let png = render_to_png(content, &state)?;
         eprintln!("excd view: protocol=ascii");
         println!("Terminal does not support image display.");
         println!("Rendered {} bytes of PNG data.", png.len());
@@ -211,7 +227,7 @@ pub fn view_file_with(content: &str, force: Option<ImageProtocol>) -> Result<(),
     let label = picker_protocol_label(&picker, requested);
     eprintln!("excd view: protocol={label}");
 
-    let img = render_to_image(content, &ViewState::default())?;
+    let img = render_to_image(content, &state)?;
 
     let backend = CrosstermBackend::new(io::stdout());
     let mut terminal = Terminal::new(backend).map_err(|e| format!("Terminal error: {e}"))?;
@@ -225,7 +241,7 @@ pub fn view_file_with(content: &str, force: Option<ImageProtocol>) -> Result<(),
         (img.height() as u32).div_ceil(font_size.height as u32).max(1) as u16;
     let size = ratatui::layout::Size::new(cols.min(area.width), rows.min(area.height));
     let protocol = picker
-        .new_protocol(img, size, Resize::Fit(None))
+        .new_protocol(img, size, Resize::Fit(Some(FilterType::Lanczos3)))
         .map_err(|e| format!("Protocol error: {e}"))?;
 
     terminal
@@ -257,6 +273,15 @@ pub fn run_interactive_with(
     content: &str,
     force: Option<ImageProtocol>,
 ) -> Result<(), String> {
+    run_interactive_tuned(content, force, ViewState::default().supersample)
+}
+
+/// Interactive viewer with a custom supersampling factor for halfblock sharpness.
+pub fn run_interactive_tuned(
+    content: &str,
+    force: Option<ImageProtocol>,
+    supersample: f64,
+) -> Result<(), String> {
     let requested = force.unwrap_or(ImageProtocol::Auto);
     let mut picker = build_picker(requested);
     let label = picker_protocol_label(&picker, requested);
@@ -272,6 +297,7 @@ pub fn run_interactive_with(
     let mut terminal = Terminal::new(backend).map_err(|e| format!("Terminal error: {e}"))?;
 
     let mut state = ViewState::default();
+    state.supersample = supersample.max(1.0);
     let mut protocol = build_protocol(&mut picker, content, &state)?;
 
     loop {
@@ -331,7 +357,7 @@ fn build_protocol(
         .max(1) as u16;
     let size = ratatui::layout::Size::new(cols, rows);
     picker
-        .new_protocol(img, size, Resize::Fit(None))
+        .new_protocol(img, size, Resize::Fit(Some(FilterType::Lanczos3)))
         .map_err(|e| format!("Protocol error: {e}"))
 }
 
@@ -417,7 +443,8 @@ mod tests {
     fn render_options_from_view_state() {
         let state = ViewState::default();
         let opts = state.render_options();
-        assert!((opts.scale - 1.0).abs() < f64::EPSILON);
+        assert!(opts.scale > 0.0);
+        assert!((opts.scale - state.zoom * state.supersample).abs() < f64::EPSILON);
     }
 
     #[test]
