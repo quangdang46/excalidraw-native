@@ -72,31 +72,25 @@ Target v0.1 features:
 
 ## Rendered examples
 
-All images below are rendered entirely by `excalidraw-native` from `.excalidraw` fixture files — no browser involved.
+All images below are rendered entirely by `excalidraw-native` — no browser, no Puppeteer, no Node.js.
 
-### Shapes with colors, fills, and arrows
+### Microservices architecture
+
+![Architecture diagram](docs/examples/architecture_diagram.png)
+
+Multi-layer system diagram with rectangles, diamonds, ellipses, color-coded services, dashed/dotted arrows, cross-hatch database nodes, layer dividers, and a Redis/MQ infrastructure tier.
+
+### Request processing flowchart
+
+![Flowchart](docs/examples/flowchart_complex.png)
+
+Decision-branching flowchart with validation gates, cache hit/miss paths, error handling with logging, and multiple arrow styles (solid, dashed, dotted) connecting ellipses, rectangles, and diamonds.
+
+### Mixed shapes and styles
 
 ![Complex diagram](docs/examples/complex_diagram.png)
 
-Rectangles, diamonds, ellipses, arrows, hatched fills, dashed lines, and multiple colors — rendered with the hand-drawn rough style via `rough-rs`.
-
-### Basic shapes
-
-![Simple shapes](docs/examples/simple_shapes.png)
-
-Rectangle, ellipse, and diamond with solid and hatched fills at different stroke widths.
-
-### Freedraw strokes
-
-![Freedraw](docs/examples/freedraw.png)
-
-Freehand pen strokes rendered as smooth polylines.
-
-### Frame clipping
-
-![Frame clip](docs/examples/frame_clip.png)
-
-Elements clipped to frame boundaries with dashed frame borders.
+Rectangles, diamonds, ellipses, arrows, hatched fills, dashed lines, and freedraw strokes rendered with the hand-drawn rough style.
 
 ---
 
