@@ -131,58 +131,66 @@ fn render_entity_label(info: &EntityInfo, options: &MermaidConvertOptions) -> St
 
 fn index_entities(semantic: &Value) -> HashMap<String, EntityInfo> {
     let mut map = HashMap::new();
-    let entries = semantic
-        .get("entities")
-        .or_else(|| semantic.get("nodes"))
-        .and_then(Value::as_array);
-    if let Some(entries) = entries {
-        for entity in entries {
-            let id = entity
-                .get("id")
-                .or_else(|| entity.get("name"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let name = entity
-                .get("name")
-                .or_else(|| entity.get("label"))
-                .or_else(|| entity.get("id"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let attributes = entity
-                .get("attributes")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|item| {
-                            if let Value::String(s) = item {
-                                Some(s.clone())
-                            } else if let Value::Object(map) = item {
-                                let name = map
-                                    .get("name")
-                                    .or_else(|| map.get("attributeName"))
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("");
-                                let ty = map
-                                    .get("type")
-                                    .or_else(|| map.get("attributeType"))
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("");
-                                if name.is_empty() && ty.is_empty() {
-                                    None
-                                } else {
-                                    Some(format!("{ty} {name}").trim().to_string())
-                                }
-                            } else {
+    // Mermaid's semantic stores entities as an object keyed by entity name,
+    // not as an array.  Fall back to array form for forward-compatibility.
+    let entries: Vec<&Value> =
+        if let Some(obj) = semantic.get("entities").and_then(Value::as_object) {
+            obj.values().collect()
+        } else if let Some(arr) = semantic
+            .get("entities")
+            .or_else(|| semantic.get("nodes"))
+            .and_then(Value::as_array)
+        {
+            arr.iter().collect()
+        } else {
+            Vec::new()
+        };
+    for entity in entries {
+        let id = entity
+            .get("id")
+            .or_else(|| entity.get("name"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let name = entity
+            .get("name")
+            .or_else(|| entity.get("label"))
+            .or_else(|| entity.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let attributes = entity
+            .get("attributes")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| {
+                        if let Value::String(s) = item {
+                            Some(s.clone())
+                        } else if let Value::Object(map) = item {
+                            let name = map
+                                .get("name")
+                                .or_else(|| map.get("attributeName"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            let ty = map
+                                .get("type")
+                                .or_else(|| map.get("attributeType"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            if name.is_empty() && ty.is_empty() {
                                 None
+                            } else {
+                                Some(format!("{ty} {name}").trim().to_string())
                             }
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            map.insert(id, EntityInfo { name, attributes });
-        }
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        map.insert(id, EntityInfo { name, attributes });
     }
     map
 }

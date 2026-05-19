@@ -15,12 +15,13 @@ use crate::style;
 
 pub fn convert(
     layout: &StateDiagramV2Layout,
-    _semantic: &Value,
+    semantic: &Value,
     options: &MermaidConvertOptions,
 ) -> Result<Vec<Value>, MermaidConvertError> {
     let mut ids = IdGen::new("mm-state");
     let mut elements: Vec<Value> = Vec::new();
     let mut shape_ids: HashMap<String, String> = HashMap::new();
+    let semantic_nodes = index_state_nodes(semantic);
 
     // Emit clusters first as background frames.
     for cluster in &layout.clusters {
@@ -45,21 +46,31 @@ pub fn convert(
         if node.is_cluster {
             continue;
         }
-        // Mermaid uses pseudostates `[*]` for start/end. Render them as filled
-        // black circles using a small ellipse.
-        let is_pseudo =
-            node.id == "[*]" || node.id.starts_with("__start__") || node.id.starts_with("__end__");
+        // Detect pseudo-states from semantic shape or from known id patterns.
+        let sem_shape = semantic_nodes
+            .get(node.id.as_str())
+            .and_then(|n| n.get("shape"))
+            .and_then(Value::as_str)
+            .unwrap_or("");
+        let is_pseudo = sem_shape == "stateStart"
+            || sem_shape == "stateEnd"
+            || node.id == "[*]"
+            || node.id.starts_with("__start__")
+            || node.id.starts_with("__end__")
+            || node.id.ends_with("_start")
+            || node.id.ends_with("_end");
         if is_pseudo {
             let id = ids.for_node("pseudo", &node.id);
-            let x = node.x - node.width.max(24.0) / 2.0;
-            let y = node.y - node.height.max(24.0) / 2.0;
+            let size = 24.0_f64;
+            let x = node.x - size / 2.0;
+            let y = node.y - size / 2.0;
             elements.push(builder::ellipse(
                 &Rect {
                     id: &id,
                     x,
                     y,
-                    width: node.width.max(24.0),
-                    height: node.height.max(24.0),
+                    width: size,
+                    height: size,
                     fill: Some(style::STATE_PSEUDO_FILL),
                     rounded: false,
                     frame_id: None,
@@ -69,7 +80,12 @@ pub fn convert(
             shape_ids.insert(node.id.clone(), id);
             continue;
         }
-        let label = node.id.replace('_', " ");
+        // Derive label from semantic data, falling back to the node id.
+        let label = semantic_nodes
+            .get(node.id.as_str())
+            .and_then(|n| n.get("label").and_then(Value::as_str))
+            .unwrap_or(&node.id)
+            .to_string();
         let NodeOutput {
             shape_id,
             shape,
@@ -123,4 +139,17 @@ pub fn convert(
     }
 
     Ok(elements)
+}
+
+/// Build a lookup from node id → semantic node JSON for label and shape info.
+fn index_state_nodes(semantic: &Value) -> HashMap<&str, &Value> {
+    let mut map = HashMap::new();
+    if let Some(arr) = semantic.get("nodes").and_then(Value::as_array) {
+        for node in arr {
+            if let Some(id) = node.get("id").and_then(Value::as_str) {
+                map.insert(id, node);
+            }
+        }
+    }
+    map
 }

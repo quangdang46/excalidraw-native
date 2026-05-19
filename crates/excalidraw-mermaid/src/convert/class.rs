@@ -123,35 +123,43 @@ fn render_class_label(info: &ClassInfo, options: &MermaidConvertOptions) -> Stri
 
 fn index_classes(semantic: &Value) -> HashMap<String, ClassInfo> {
     let mut map = HashMap::new();
-    let arr = semantic
+    // Mermaid's semantic stores classes as an object keyed by class name,
+    // not as an array.  Fall back to array form for forward-compatibility.
+    let entries: Vec<&Value> = if let Some(obj) = semantic.get("classes").and_then(Value::as_object)
+    {
+        obj.values().collect()
+    } else if let Some(arr) = semantic
         .get("classes")
         .or_else(|| semantic.get("nodes"))
-        .and_then(Value::as_array);
-    if let Some(arr) = arr {
-        for class in arr {
-            let id = class
-                .get("id")
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let name = class
-                .get("name")
-                .or_else(|| class.get("label"))
-                .or_else(|| class.get("id"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let members = extract_string_list(class, "members");
-            let methods = extract_string_list(class, "methods");
-            map.insert(
-                id,
-                ClassInfo {
-                    name,
-                    members,
-                    methods,
-                },
-            );
-        }
+        .and_then(Value::as_array)
+    {
+        arr.iter().collect()
+    } else {
+        Vec::new()
+    };
+    for class in entries {
+        let id = class
+            .get("id")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let name = class
+            .get("name")
+            .or_else(|| class.get("label"))
+            .or_else(|| class.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let members = extract_string_list(class, "members");
+        let methods = extract_string_list(class, "methods");
+        map.insert(
+            id,
+            ClassInfo {
+                name,
+                members,
+                methods,
+            },
+        );
     }
     map
 }
@@ -164,7 +172,8 @@ fn extract_string_list(value: &Value, key: &str) -> Vec<String> {
         .filter_map(|item| match item {
             Value::String(s) => Some(s.clone()),
             Value::Object(map) => map
-                .get("text")
+                .get("displayText")
+                .or_else(|| map.get("text"))
                 .or_else(|| map.get("signature"))
                 .or_else(|| map.get("name"))
                 .and_then(Value::as_str)
