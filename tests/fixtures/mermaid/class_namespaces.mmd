@@ -1,0 +1,26 @@
+classDiagram
+    namespace Models {
+        class User {
+            +int id
+            +String name
+            +String email
+        }
+        class Order {
+            +int id
+            +Date created_at
+            +float total
+        }
+    }
+    namespace Services {
+        class UserService {
+            +getUser(int id) User
+            +createUser(String name) User
+        }
+        class OrderService {
+            +placeOrder(int userId) Order
+            +cancelOrder(int id) bool
+        }
+    }
+    UserService --> User : manages
+    OrderService --> Order : manages
+    OrderService --> UserService : depends on

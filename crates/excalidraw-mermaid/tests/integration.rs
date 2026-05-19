@@ -91,12 +91,190 @@ fn class_basic_round_trips() {
 }
 
 #[test]
+fn class_basic_has_labels() {
+    let src = fixture("class_basic.mmd");
+    let options = MermaidConvertOptions::default();
+    let value = parse_to_excalidraw_value(&src, &options).expect("class");
+    let json = serde_json::to_string(&value).unwrap();
+    assert!(json.contains("Animal"), "class name Animal must appear");
+    assert!(json.contains("Dog"), "class name Dog must appear");
+    assert!(
+        json.contains("makeSound"),
+        "method makeSound must appear in class text"
+    );
+}
+
+#[test]
+fn sequence_basic_has_labels() {
+    let src = fixture("sequence_basic.mmd");
+    let options = MermaidConvertOptions::default();
+    let value = parse_to_excalidraw_value(&src, &options).expect("seq");
+    let json = serde_json::to_string(&value).unwrap();
+    assert!(json.contains("Alice"), "actor Alice must appear");
+    assert!(json.contains("Bob"), "actor Bob must appear");
+    assert!(
+        json.contains("Hello Bob"),
+        "message 'Hello Bob' must appear"
+    );
+}
+
+#[test]
 fn er_basic_round_trips() {
     let src = fixture("er_basic.mmd");
     let options = MermaidConvertOptions::default();
     let file = parse_to_excalidraw_file(&src, &options).expect("parse er");
     assert!(!file.elements.is_empty());
     assert_renders(&file);
+}
+
+#[test]
+fn er_basic_has_labels() {
+    let src = fixture("er_basic.mmd");
+    let options = MermaidConvertOptions::default();
+    let value = parse_to_excalidraw_value(&src, &options).expect("er");
+    let json = serde_json::to_string(&value).unwrap();
+    assert!(
+        json.contains("CUSTOMER"),
+        "entity CUSTOMER must appear in text"
+    );
+    assert!(json.contains("ORDER"), "entity ORDER must appear in text");
+}
+
+#[test]
+fn state_basic_has_pseudo_ellipses() {
+    let src = fixture("state_basic.mmd");
+    let options = MermaidConvertOptions::default();
+    let value = parse_to_excalidraw_value(&src, &options).expect("state");
+    let elements = value
+        .get("elements")
+        .and_then(|v| v.as_array())
+        .expect("elements");
+    let ellipses: Vec<_> = elements
+        .iter()
+        .filter(|e| e.get("type").and_then(|t| t.as_str()) == Some("ellipse"))
+        .collect();
+    assert!(
+        ellipses.len() >= 2,
+        "start/end pseudo-states should be ellipses, got {}",
+        ellipses.len()
+    );
+}
+
+// --- New fixture tests (Tier 1 coverage) ---
+
+#[test]
+fn flowchart_styled_round_trips() {
+    let src = fixture("flowchart_styled.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse styled");
+    assert_renders(&file);
+}
+
+#[test]
+fn flowchart_shapes_round_trips() {
+    let src = fixture("flowchart_shapes.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse shapes");
+    let value = parse_to_excalidraw_value(&src, &options).expect("shapes value");
+    let json = serde_json::to_string(&value).unwrap();
+    assert!(json.contains("Diamond"), "Diamond label present");
+    assert!(json.contains("Rectangle"), "Rectangle label present");
+    assert!(json.contains("Circle"), "Circle label present");
+    assert_renders(&file);
+}
+
+#[test]
+fn flowchart_50nodes_round_trips() {
+    let src = fixture("flowchart_50nodes.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse 50nodes");
+    assert!(
+        file.elements.len() >= 40,
+        "expected many elements, got {}",
+        file.elements.len()
+    );
+    assert_renders(&file);
+}
+
+#[test]
+fn sequence_loops_round_trips() {
+    let src = fixture("sequence_loops.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse loops");
+    assert_renders(&file);
+}
+
+#[test]
+fn sequence_activations_round_trips() {
+    let src = fixture("sequence_activations.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse activations");
+    assert_renders(&file);
+}
+
+#[test]
+fn sequence_notes_round_trips() {
+    let src = fixture("sequence_notes.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse notes");
+    assert_renders(&file);
+}
+
+#[test]
+fn class_inheritance_round_trips() {
+    let src = fixture("class_inheritance.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse inheritance");
+    let value = parse_to_excalidraw_value(&src, &options).expect("inheritance value");
+    let json = serde_json::to_string(&value).unwrap();
+    assert!(json.contains("Shape"), "Shape class present");
+    assert!(json.contains("Circle"), "Circle class present");
+    assert!(json.contains("Square"), "Square class present");
+    assert_renders(&file);
+}
+
+#[test]
+fn class_namespaces_round_trips() {
+    let src = fixture("class_namespaces.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse namespaces");
+    assert_renders(&file);
+}
+
+#[test]
+fn state_composite_round_trips() {
+    let src = fixture("state_composite.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse composite");
+    assert_renders(&file);
+}
+
+#[test]
+fn state_choice_round_trips() {
+    let src = fixture("state_choice.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse choice");
+    assert_renders(&file);
+}
+
+#[test]
+fn er_cardinalities_round_trips() {
+    let src = fixture("er_cardinalities.mmd");
+    let options = MermaidConvertOptions::default();
+    let file = parse_to_excalidraw_file(&src, &options).expect("parse cardinalities");
+    assert_renders(&file);
+}
+
+#[test]
+fn unsupported_gantt_falls_back() {
+    let src = fixture("unsupported_gantt.mmd");
+    let options = MermaidConvertOptions::default();
+    let value = parse_to_excalidraw_value(&src, &options).expect("gantt fallback");
+    let elements = value
+        .get("elements")
+        .and_then(|v| v.as_array())
+        .expect("elements");
+    assert!(!elements.is_empty(), "gantt should produce placeholder");
 }
 
 #[test]

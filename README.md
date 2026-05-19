@@ -92,6 +92,46 @@ Decision-branching flowchart with validation gates, cache hit/miss paths, error 
 
 Rectangles, diamonds, ellipses, arrows, hatched fills, dashed lines, and freedraw strokes rendered with the hand-drawn rough style.
 
+### Mermaid → Excalidraw (v0.2)
+
+All diagrams below are converted from Mermaid text to Excalidraw elements and rendered natively — no browser.
+
+#### Class diagram
+
+![Class diagram](docs/examples/mermaid_class.png)
+
+Inheritance hierarchy with abstract `Shape`, `Circle`, `Rectangle`, and `Square` — members, methods, and `---` separators rendered in-box.
+
+#### Sequence diagram
+
+![Sequence diagram](docs/examples/mermaid_sequence.png)
+
+Client/Server/DB sequence with `POST /login`, alt/else branching, loop heartbeat, and response messages.
+
+#### Flowchart shapes
+
+![Flowchart shapes](docs/examples/mermaid_flowchart.png)
+
+Rectangle → Rounded → Diamond → Stadium → Circle → Subroutine → Database shape mapping.
+
+#### State diagram
+
+![State diagram](docs/examples/mermaid_state.png)
+
+Start/end pseudo-states as filled circles, `Idle` ↔ `Running` with decision diamond.
+
+#### ER diagram
+
+![ER diagram](docs/examples/mermaid_er.png)
+
+`CUSTOMER` → `ORDER` → `LINE-ITEM` with typed attributes.
+
+#### 50-node flowchart
+
+![50-node flowchart](docs/examples/mermaid_50nodes.png)
+
+Stress test: 50+ nodes, subgraphs, decision diamonds, retry loops, worker pool fan-out/fan-in.
+
 ---
 
 ## What it does not do

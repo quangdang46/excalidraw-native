@@ -11,7 +11,8 @@ use serde_json::Value;
 
 use crate::builder;
 use crate::convert::common::{
-    edge_with_label, node_with_text, truncate, EdgeOutput, IdGen, NodeOutput, NodeShape,
+    edge_with_label, node_with_text, truncate, update_text_box, EdgeOutput, IdGen, NodeOutput,
+    NodeShape,
 };
 use crate::error::MermaidConvertError;
 use crate::options::MermaidConvertOptions;
@@ -26,9 +27,15 @@ pub fn convert(
     let mut elements: Vec<Value> = Vec::new();
     let mut shape_ids: HashMap<String, String> = HashMap::new();
     let entities = index_entities(semantic);
+    let rel_labels = index_relationship_labels(semantic);
 
     for node in &layout.nodes {
         if node.is_cluster {
+            continue;
+        }
+        // Skip intermediate helper nodes (e.g. self-referencing edge waypoints)
+        // that aren't real entities.
+        if !entities.contains_key(node.id.as_str()) {
             continue;
         }
         let label = entities
@@ -64,7 +71,9 @@ pub fn convert(
         let start_arrowhead = edge.start_marker.as_deref().map(map_marker_to_arrowhead);
         let end_arrowhead = edge.end_marker.as_deref().map(map_marker_to_arrowhead);
         let EdgeOutput {
-            arrow_id, arrow, ..
+            arrow_id,
+            arrow,
+            label,
         } = edge_with_label(
             edge,
             start_id,
@@ -89,6 +98,23 @@ pub fn convert(
                 .find(|el| el.get("id").and_then(Value::as_str) == Some(end))
             {
                 builder::bind_arrow(end_value, &arrow_id);
+            }
+        }
+        // Add relationship label from semantic data.
+        if let Some(label) = label {
+            let rel_key = format!("{}---{}", edge.from, edge.to);
+            let label_text = rel_labels.get(&rel_key).cloned().unwrap_or_default();
+            if !label_text.is_empty() {
+                let mut text_value = label.text;
+                update_text_box(
+                    &mut text_value,
+                    label.x,
+                    label.y,
+                    label.width,
+                    label.height,
+                    &truncate(&label_text, options.max_text_size),
+                );
+                elements.push(text_value);
             }
         }
         elements.push(arrow);
@@ -131,57 +157,84 @@ fn render_entity_label(info: &EntityInfo, options: &MermaidConvertOptions) -> St
 
 fn index_entities(semantic: &Value) -> HashMap<String, EntityInfo> {
     let mut map = HashMap::new();
-    let entries = semantic
-        .get("entities")
-        .or_else(|| semantic.get("nodes"))
-        .and_then(Value::as_array);
-    if let Some(entries) = entries {
-        for entity in entries {
-            let id = entity
-                .get("id")
-                .or_else(|| entity.get("name"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let name = entity
-                .get("name")
-                .or_else(|| entity.get("label"))
-                .or_else(|| entity.get("id"))
-                .and_then(Value::as_str)
-                .unwrap_or("")
-                .to_string();
-            let attributes = entity
-                .get("attributes")
-                .and_then(Value::as_array)
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|item| {
-                            if let Value::String(s) = item {
-                                Some(s.clone())
-                            } else if let Value::Object(map) = item {
-                                let name = map
-                                    .get("name")
-                                    .or_else(|| map.get("attributeName"))
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("");
-                                let ty = map
-                                    .get("type")
-                                    .or_else(|| map.get("attributeType"))
-                                    .and_then(Value::as_str)
-                                    .unwrap_or("");
-                                if name.is_empty() && ty.is_empty() {
-                                    None
-                                } else {
-                                    Some(format!("{ty} {name}").trim().to_string())
-                                }
-                            } else {
+    // Mermaid's semantic stores entities as an object keyed by entity name,
+    // not as an array.  Fall back to array form for forward-compatibility.
+    let entries: Vec<&Value> =
+        if let Some(obj) = semantic.get("entities").and_then(Value::as_object) {
+            obj.values().collect()
+        } else if let Some(arr) = semantic
+            .get("entities")
+            .or_else(|| semantic.get("nodes"))
+            .and_then(Value::as_array)
+        {
+            arr.iter().collect()
+        } else {
+            Vec::new()
+        };
+    for entity in entries {
+        let id = entity
+            .get("id")
+            .or_else(|| entity.get("name"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let name = entity
+            .get("name")
+            .or_else(|| entity.get("label"))
+            .or_else(|| entity.get("id"))
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string();
+        let attributes = entity
+            .get("attributes")
+            .and_then(Value::as_array)
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|item| {
+                        if let Value::String(s) = item {
+                            Some(s.clone())
+                        } else if let Value::Object(map) = item {
+                            let name = map
+                                .get("name")
+                                .or_else(|| map.get("attributeName"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            let ty = map
+                                .get("type")
+                                .or_else(|| map.get("attributeType"))
+                                .and_then(Value::as_str)
+                                .unwrap_or("");
+                            if name.is_empty() && ty.is_empty() {
                                 None
+                            } else {
+                                Some(format!("{ty} {name}").trim().to_string())
                             }
-                        })
-                        .collect()
-                })
-                .unwrap_or_default();
-            map.insert(id, EntityInfo { name, attributes });
+                        } else {
+                            None
+                        }
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        map.insert(id, EntityInfo { name, attributes });
+    }
+    map
+}
+
+/// Build a lookup from "entityA---entityB" → relationship label using
+/// the semantic `relationships` array. Uses `roleA` (or `roleB`) as label.
+fn index_relationship_labels(semantic: &Value) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    let Some(rels) = semantic.get("relationships").and_then(Value::as_array) else {
+        return map;
+    };
+    for rel in rels {
+        let entity_a = rel.get("entityA").and_then(Value::as_str).unwrap_or("");
+        let entity_b = rel.get("entityB").and_then(Value::as_str).unwrap_or("");
+        let role = rel.get("roleA").and_then(Value::as_str).unwrap_or("");
+        if !entity_a.is_empty() && !entity_b.is_empty() && !role.is_empty() {
+            let key = format!("{entity_a}---{entity_b}");
+            map.entry(key).or_insert_with(|| role.to_string());
         }
     }
     map

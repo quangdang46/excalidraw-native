@@ -7,10 +7,10 @@
 
 use std::collections::HashMap;
 
-use merman_render::model::{LayoutNode, SequenceDiagramLayout};
+use merman_render::model::SequenceDiagramLayout;
 use serde_json::Value;
 
-use crate::builder::{self, Arrow, Rect, Text};
+use crate::builder::{self, Arrow};
 use crate::convert::common::{
     edge_with_label, node_with_text, truncate, update_text_box, EdgeOutput, IdGen, NodeOutput,
     NodeShape,
@@ -21,12 +21,22 @@ use crate::style;
 
 pub fn convert(
     layout: &SequenceDiagramLayout,
-    _semantic: &Value,
+    semantic: &Value,
     options: &MermaidConvertOptions,
 ) -> Result<Vec<Value>, MermaidConvertError> {
     let mut ids = IdGen::new("mm-seq");
     let mut elements: Vec<Value> = Vec::new();
     let mut actor_ids: HashMap<String, String> = HashMap::new();
+    // Build lookup from semantic data for actors and messages.
+    let actor_labels = index_actors(semantic);
+    let messages_raw = semantic
+        .get("messages")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let messages = index_messages(semantic);
+    // Track which actor names we've already emitted (skip "actor-bottom-*" duplicates).
+    let mut emitted_actors: HashMap<String, bool> = HashMap::new();
 
     // Determine bounds for lifeline rendering.
     let (mut min_y, mut max_y) = (f64::INFINITY, f64::NEG_INFINITY);
@@ -49,13 +59,39 @@ pub fn convert(
     if !max_y.is_finite() {
         max_y = min_y + 320.0;
     }
-    let lifeline_bottom = max_y + 240.0;
+    // Also compute the lowest edge Y to tighten lifeline length.
+    let mut max_edge_y: f64 = f64::NEG_INFINITY;
+    for edge in &layout.edges {
+        for pt in &edge.points {
+            if pt.y > max_edge_y {
+                max_edge_y = pt.y;
+            }
+        }
+    }
+    let lifeline_extent = if max_edge_y.is_finite() {
+        max_edge_y + 40.0
+    } else {
+        max_y + 80.0
+    };
+    let lifeline_bottom = lifeline_extent.max(max_y + 40.0);
 
     for node in &layout.nodes {
         if node.is_cluster {
             continue;
         }
-        let label = derive_actor_label(node);
+        // Extract the real actor name from the layout node id.
+        let actor_name = extract_actor_name(&node.id);
+        // Skip "actor-bottom-*" duplicates — only emit one box per actor.
+        let is_bottom = node.id.starts_with("actor-bottom-");
+        if is_bottom && emitted_actors.contains_key(&actor_name) {
+            continue;
+        }
+        if emitted_actors.contains_key(&actor_name) && !is_bottom {
+            continue;
+        }
+        emitted_actors.insert(actor_name.clone(), true);
+        // Derive label from semantic actor data, falling back to the extracted name.
+        let label = actor_labels.get(&actor_name).cloned().unwrap_or(actor_name);
         let NodeOutput {
             shape_id,
             shape,
@@ -95,6 +131,24 @@ pub fn convert(
     }
 
     for edge in &layout.edges {
+        // Skip lifeline edges — they're rendered above as part of actor emission.
+        if edge.id.starts_with("lifeline-") {
+            continue;
+        }
+        // Parse the message index from edge ID "msg-N" to index into semantic messages.
+        let msg_idx = edge
+            .id
+            .strip_prefix("msg-")
+            .and_then(|s| s.parse::<usize>().ok());
+        // Skip control-flow edges (alt/else/loop/end): semantic types 10-14.
+        if let Some(mi) = msg_idx {
+            if let Some(msg) = messages_raw.get(mi) {
+                let mtype = msg.get("type").and_then(|v| v.as_u64()).unwrap_or(0);
+                if mtype >= 10 {
+                    continue;
+                }
+            }
+        }
         let start_id = actor_ids.get(&edge.from).map(String::as_str);
         let end_id = actor_ids.get(&edge.to).map(String::as_str);
         let stroke_style = edge
@@ -133,7 +187,11 @@ pub fn convert(
             }
         }
         if let Some(label) = label {
-            let label_text = derive_edge_label(edge);
+            // Look up the real message text from semantic data using edge ID index.
+            let label_text = msg_idx
+                .and_then(|mi| messages.get(mi))
+                .cloned()
+                .unwrap_or_default();
             if !label_text.is_empty() {
                 let mut text_value = label.text;
                 update_text_box(
@@ -150,46 +208,50 @@ pub fn convert(
         elements.push(arrow);
     }
 
-    // Add a header rectangle if there's a title to anchor the actor lane.
-    let _ = Text {
-        id: "",
-        x: 0.0,
-        y: 0.0,
-        width: 0.0,
-        height: 0.0,
-        text: "",
-        font_size: options.font_size,
-        align: "left",
-        container_id: None,
-        frame_id: None,
-    };
-    let _ = Rect {
-        id: "",
-        x: 0.0,
-        y: 0.0,
-        width: 0.0,
-        height: 0.0,
-        fill: None,
-        rounded: false,
-        frame_id: None,
-    };
-
     Ok(elements)
 }
 
-fn derive_actor_label(node: &LayoutNode) -> String {
-    // Mermaid sequence diagrams encode the participant name in the layout id
-    // (e.g. `actorA`) and there is no separate semantic label exposed via the
-    // public layout API. Use the id as a stable fallback.
-    node.id.replace('_', " ")
+/// Extract the real actor name from a layout node id like "actor-top-Alice"
+/// or "actor-bottom-Bob".
+fn extract_actor_name(node_id: &str) -> String {
+    let stripped = node_id
+        .strip_prefix("actor-top-")
+        .or_else(|| node_id.strip_prefix("actor-bottom-"))
+        .unwrap_or(node_id);
+    stripped.to_string()
 }
 
-fn derive_edge_label(edge: &merman_render::model::LayoutEdge) -> String {
-    // The published merman API does not expose message text on `LayoutEdge`
-    // yet. Use the edge id for visibility (e.g. `msg-1`).
-    if edge.id.is_empty() {
-        String::new()
-    } else {
-        edge.id.replace('_', " ")
+/// Build a lookup from actor name → display label using the semantic JSON.
+/// Mermaid semantic stores actors as an object keyed by name with
+/// `name` and `description` fields.
+fn index_actors(semantic: &Value) -> HashMap<String, String> {
+    let mut map = HashMap::new();
+    if let Some(obj) = semantic.get("actors").and_then(Value::as_object) {
+        for (key, actor) in obj {
+            let label = actor
+                .get("description")
+                .or_else(|| actor.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or(key.as_str());
+            map.insert(key.clone(), label.to_string());
+        }
     }
+    map
+}
+
+/// Build an ordered list of message texts from the semantic JSON.
+/// Messages are stored as an array under `semantic.messages`.
+fn index_messages(semantic: &Value) -> Vec<String> {
+    let Some(arr) = semantic.get("messages").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    arr.iter()
+        .map(|msg| {
+            msg.get("message")
+                .or_else(|| msg.get("text"))
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string()
+        })
+        .collect()
 }
