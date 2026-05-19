@@ -86,14 +86,25 @@ impl ImageProtocol {
 }
 
 /// Build a [`Picker`] honoring the requested override (or auto-detect).
+///
+/// Skips the terminal query (which sends `CSI 14t/16t/18t`) when the user
+/// has explicitly forced a protocol or set `EXCD_VIEW_NO_QUERY=1`. Some
+/// terminals (and editor panels emulating one) reply to those queries
+/// asynchronously, leaking the response (e.g. `^[[6;27;12t`) into the
+/// shell after `excd` exits.
 fn build_picker(force: ImageProtocol) -> Picker {
     if matches!(force, ImageProtocol::Ascii) {
         return Picker::halfblocks();
     }
-    let mut picker = if io::stdout().is_terminal() {
-        Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks())
-    } else {
+    let skip_query = matches!(
+        force,
+        ImageProtocol::Halfblock | ImageProtocol::Kitty | ImageProtocol::Sixel | ImageProtocol::Iterm2,
+    ) || std::env::var_os("EXCD_VIEW_NO_QUERY").is_some()
+        || !io::stdout().is_terminal();
+    let mut picker = if skip_query {
         Picker::halfblocks()
+    } else {
+        Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks())
     };
     if let Some(pt) = force.to_protocol_type() {
         picker.set_protocol_type(pt);
