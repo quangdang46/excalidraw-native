@@ -417,8 +417,11 @@ fn output_iterm2(data: &[u8]) {
 fn output_halfblock(data: &[u8]) {
     // Decode PNG and render as halfblock characters. Each terminal cell
     // shows two pixels (upper/lower) via U+2580 with foreground+background.
-    // We size the image to the actual terminal viewport so we never
-    // overflow the screen on small panes.
+    // We size the image to the actual terminal viewport (preserving the
+    // image aspect ratio) so we never overflow on small panes nor leave
+    // the cursor hanging at the right edge — many terminals auto-wrap
+    // when the cursor reaches the last column, which would insert a
+    // blank/black row between every halfblock line.
     let img = match image::load_from_memory(data) {
         Ok(img) => img,
         Err(e) => {
@@ -430,13 +433,36 @@ fn output_halfblock(data: &[u8]) {
         Ok((c, r)) => (c.max(20) as u32, r.max(8) as u32),
         Err(_) => (120, 60),
     };
-    // Reserve the bottom 2 rows for the status line.
-    let target_w = cols;
-    let target_h = rows.saturating_sub(2).max(4) * 2; // 2 pixels per row
-    let img = img.resize(target_w, target_h, image::imageops::FilterType::Triangle);
+    // Stay one column shy of the right edge to avoid auto-wrap.
+    // Each terminal cell holds two vertical pixels.
+    let max_w = cols.saturating_sub(1).max(8);
+    let max_h = rows.saturating_sub(2).max(4) * 2;
+    // Preserve aspect ratio: fit into (max_w x max_h) cell pixels but treat
+    // a cell as 1x2 image pixels (width:height = 1:2 in cell space, so
+    // halve max_h to compare in cell units, then double back).
+    let (orig_w, orig_h) = (img.width().max(1), img.height().max(1));
+    let aspect = orig_w as f64 / orig_h as f64;
+    let cell_h = max_h / 2; // available rows
+    let by_w = max_w as f64;
+    let by_h_w = cell_h as f64 * aspect; // width if we max out rows
+    let (target_cols, target_rows) = if by_h_w <= by_w {
+        (by_h_w.round().max(1.0) as u32, cell_h)
+    } else {
+        let r = (by_w / aspect).round().max(1.0) as u32;
+        (max_w, r)
+    };
+    let target_w = target_cols;
+    let target_h = target_rows * 2;
+    let img = img.resize_exact(
+        target_w.max(1),
+        target_h.max(2),
+        image::imageops::FilterType::Triangle,
+    );
     let rgb = img.to_rgb8();
     let (w, h) = rgb.dimensions();
     let mut out = io::stdout().lock();
+    // Disable line wrap while we paint, restore afterwards.
+    let _ = write!(out, "\x1b[?7l");
     for y in (0..h).step_by(2) {
         for x in 0..w {
             let upper = rgb.get_pixel(x, y);
@@ -447,8 +473,10 @@ fn output_halfblock(data: &[u8]) {
                 upper[0], upper[1], upper[2], lower[0], lower[1], lower[2],
             );
         }
+        // Reset SGR before newline so the bg color does not paint to EOL.
         let _ = writeln!(out, "\x1b[0m");
     }
+    let _ = write!(out, "\x1b[?7h");
     let _ = out.flush();
 }
 
