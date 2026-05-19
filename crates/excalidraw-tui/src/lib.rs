@@ -1,13 +1,30 @@
 //! Terminal preview consumer for excalidraw-native.
 //!
-//! The TUI displays render outputs from `excalidraw-render`; it does not own
-//! renderer semantics. It detects the terminal image protocol (Kitty, Sixel,
-//! iTerm2, halfblock fallback) and renders the diagram for interactive viewing.
+//! Renders the diagram via `excalidraw-render` and displays it through
+//! [`ratatui-image`], which unifies Kitty / Sixel / iTerm2 / halfblocks
+//! across terminals (auto-detected via `Picker::from_query_stdio` with a
+//! halfblocks fallback). The viewer offers a one-shot mode and an
+//! interactive ratatui app with pan/zoom keybindings.
 
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
+use std::time::Duration;
 
 use excalidraw_core::normalize_file;
 use excalidraw_render::{render_png, render_svg, RenderOptions};
+use image::DynamicImage;
+use ratatui::backend::CrosstermBackend;
+use ratatui::crossterm::{
+    event::{self, Event, KeyCode},
+    execute,
+    terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
+};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::style::{Modifier, Style};
+use ratatui::text::Line;
+use ratatui::widgets::{Block, Borders, Paragraph};
+use ratatui::Terminal;
+use ratatui_image::picker::{Picker, ProtocolType};
+use ratatui_image::{Image, Resize};
 
 /// Current crate version.
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -18,26 +35,23 @@ pub fn crate_boundary() -> &'static str {
     "terminal-viewer"
 }
 
-/// Detected terminal image protocol.
+/// User-facing protocol selector. Mirrors `ratatui_image::picker::ProtocolType`
+/// but adds an `Auto` variant and a friendly parser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ImageProtocol {
-    /// Kitty terminal graphics protocol.
+    Auto,
     Kitty,
-    /// Sixel graphics protocol.
     Sixel,
-    /// iTerm2 inline image protocol.
     Iterm2,
-    /// Halfblock character fallback.
     Halfblock,
-    /// No image support detected; show ASCII placeholder.
     Ascii,
 }
 
 impl ImageProtocol {
-    /// Short label suitable for status lines.
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
+            ImageProtocol::Auto => "auto",
             ImageProtocol::Kitty => "kitty",
             ImageProtocol::Sixel => "sixel",
             ImageProtocol::Iterm2 => "iterm2",
@@ -46,74 +60,58 @@ impl ImageProtocol {
         }
     }
 
-    /// Parse a protocol name from CLI/env input.
     pub fn parse(name: &str) -> Result<Self, String> {
         match name.to_ascii_lowercase().as_str() {
-            "auto" => Ok(detect_protocol()),
+            "auto" => Ok(ImageProtocol::Auto),
             "kitty" => Ok(ImageProtocol::Kitty),
             "sixel" => Ok(ImageProtocol::Sixel),
             "iterm2" | "iterm" => Ok(ImageProtocol::Iterm2),
-            "halfblock" | "blocks" | "block" => Ok(ImageProtocol::Halfblock),
+            "halfblock" | "halfblocks" | "blocks" | "block" => Ok(ImageProtocol::Halfblock),
             "ascii" | "none" => Ok(ImageProtocol::Ascii),
             other => Err(format!(
                 "unknown protocol '{other}'; expected one of: auto, kitty, sixel, iterm2, halfblock, ascii"
             )),
         }
     }
-}
 
-/// Resolve the protocol to use, honoring `EXCD_VIEW_PROTOCOL` when no
-/// explicit override is supplied.
-#[must_use]
-pub fn resolve_protocol(force: Option<ImageProtocol>) -> ImageProtocol {
-    if let Some(p) = force {
-        return p;
-    }
-    if let Ok(env) = std::env::var("EXCD_VIEW_PROTOCOL") {
-        if let Ok(p) = ImageProtocol::parse(&env) {
-            return p;
+    fn to_protocol_type(self) -> Option<ProtocolType> {
+        match self {
+            ImageProtocol::Auto | ImageProtocol::Ascii => None,
+            ImageProtocol::Kitty => Some(ProtocolType::Kitty),
+            ImageProtocol::Sixel => Some(ProtocolType::Sixel),
+            ImageProtocol::Iterm2 => Some(ProtocolType::Iterm2),
+            ImageProtocol::Halfblock => Some(ProtocolType::Halfblocks),
         }
     }
-    detect_protocol()
 }
 
-/// Detect the best available terminal image protocol.
-///
-/// Detection is intentionally conservative: protocols that the terminal
-/// only "might" support (e.g. `xterm-256color`, which generally does NOT
-/// natively support Sixel) fall through to halfblock so the user still
-/// sees a rendered image instead of an empty placeholder.
-pub fn detect_protocol() -> ImageProtocol {
-    // Kitty: hard signal only.
-    if std::env::var("TERM").is_ok_and(|t| t.starts_with("xterm-kitty"))
-        || std::env::var("KITTY_WINDOW_ID").is_ok()
-    {
-        return ImageProtocol::Kitty;
+/// Build a [`Picker`] honoring the requested override (or auto-detect).
+fn build_picker(force: ImageProtocol) -> Picker {
+    if matches!(force, ImageProtocol::Ascii) {
+        return Picker::halfblocks();
     }
-
-    // iTerm2: hard signal only.
-    if std::env::var("TERM_PROGRAM").is_ok_and(|p| p == "iTerm.app") {
-        return ImageProtocol::Iterm2;
+    let mut picker = if io::stdout().is_terminal() {
+        Picker::from_query_stdio().unwrap_or_else(|_| Picker::halfblocks())
+    } else {
+        Picker::halfblocks()
+    };
+    if let Some(pt) = force.to_protocol_type() {
+        picker.set_protocol_type(pt);
     }
+    picker
+}
 
-    // Sixel: only when TERM itself advertises sixel. Heuristics like
-    // `TERM_PROGRAM=WezTerm`, `WT_SESSION`, or `VTE_VERSION` are NOT enough:
-    // those terminals only render Sixel when explicitly enabled in config,
-    // and a wrong guess paints the user an invisible blob of escape codes.
-    // Force with `--protocol sixel` or `EXCD_VIEW_PROTOCOL=sixel` instead.
-    if std::env::var("TERM").is_ok_and(|t| t.contains("sixel")) {
-        return ImageProtocol::Sixel;
+/// Resolve the final user-visible protocol label for a built picker.
+fn picker_protocol_label(picker: &Picker, requested: ImageProtocol) -> &'static str {
+    if matches!(requested, ImageProtocol::Ascii) {
+        return "ascii";
     }
-
-    // Halfblock works on any truecolor / 256-color terminal and always
-    // produces a visible image, so it is the safe default.
-    if std::env::var("COLORTERM").is_ok()
-        || std::env::var("TERM").is_ok_and(|t| t.contains("color") || t == "screen" || t == "tmux")
-    {
-        return ImageProtocol::Halfblock;
+    match picker.protocol_type() {
+        ProtocolType::Halfblocks => "halfblock",
+        ProtocolType::Sixel => "sixel",
+        ProtocolType::Kitty => "kitty",
+        ProtocolType::Iterm2 => "iterm2",
     }
-
-    ImageProtocol::Ascii
 }
 
 /// Viewer state for pan/zoom interactions.
@@ -135,42 +133,28 @@ impl Default for ViewState {
 }
 
 impl ViewState {
-    /// Reset to default view.
     pub fn reset(&mut self) {
         *self = Self::default();
     }
-
-    /// Zoom in.
     pub fn zoom_in(&mut self) {
         self.zoom = (self.zoom * 1.25).min(8.0);
     }
-
-    /// Zoom out.
     pub fn zoom_out(&mut self) {
         self.zoom = (self.zoom / 1.25).max(0.1);
     }
-
-    /// Pan left.
     pub fn pan_left(&mut self) {
         self.pan_x -= 20.0;
     }
-
-    /// Pan right.
     pub fn pan_right(&mut self) {
         self.pan_x += 20.0;
     }
-
-    /// Pan up.
     pub fn pan_up(&mut self) {
         self.pan_y -= 20.0;
     }
-
-    /// Pan down.
     pub fn pan_down(&mut self) {
         self.pan_y += 20.0;
     }
 
-    /// Build render options from current view state.
     pub fn render_options(&self) -> RenderOptions {
         RenderOptions {
             scale: self.zoom,
@@ -202,282 +186,178 @@ pub fn render_to_svg(content: &str, state: &ViewState) -> Result<String, String>
     Ok(output.value)
 }
 
-/// Run the interactive terminal viewer.
-///
-/// Reads the excalidraw file, renders to PNG, and outputs it to the terminal
-/// using the best available protocol. For interactive mode with pan/zoom,
-/// use the `view` CLI command.
+fn render_to_image(content: &str, state: &ViewState) -> Result<DynamicImage, String> {
+    let png = render_to_png(content, state)?;
+    image::load_from_memory(&png).map_err(|e| format!("Image decode error: {e}"))
+}
+
+/// One-shot view (default when stdout is not a TTY).
 pub fn view_file(content: &str) -> Result<(), String> {
     view_file_with(content, None)
 }
 
-/// Same as [`view_file`] but allows forcing a specific protocol.
 pub fn view_file_with(content: &str, force: Option<ImageProtocol>) -> Result<(), String> {
-    let protocol = resolve_protocol(force);
-    let state = ViewState::default();
-    let png_data = render_to_png(content, &state)?;
-    eprintln!("excd view: protocol={}", protocol.label());
-
-    match protocol {
-        ImageProtocol::Kitty => output_kitty(&png_data),
-        ImageProtocol::Sixel => output_sixel(&png_data),
-        ImageProtocol::Iterm2 => output_iterm2(&png_data),
-        ImageProtocol::Halfblock => output_halfblock(&png_data),
-        ImageProtocol::Ascii => {
-            println!("Terminal does not support image display.");
-            println!("Rendered {} bytes of PNG data.", png_data.len());
-            println!("Save to file with: excd to-png <file> -o output.png");
-        }
+    let requested = force.unwrap_or(ImageProtocol::Auto);
+    if matches!(requested, ImageProtocol::Ascii) {
+        let png = render_to_png(content, &ViewState::default())?;
+        eprintln!("excd view: protocol=ascii");
+        println!("Terminal does not support image display.");
+        println!("Rendered {} bytes of PNG data.", png.len());
+        println!("Save with: excd to-png <file> -o output.png");
+        return Ok(());
     }
 
+    let picker = build_picker(requested);
+    let label = picker_protocol_label(&picker, requested);
+    eprintln!("excd view: protocol={label}");
+
+    let img = render_to_image(content, &ViewState::default())?;
+
+    let backend = CrosstermBackend::new(io::stdout());
+    let mut terminal = Terminal::new(backend).map_err(|e| format!("Terminal error: {e}"))?;
+    let area = terminal.size().map_err(|e| format!("Terminal error: {e}"))?;
+    let area = Rect::new(0, 0, area.width, area.height.saturating_sub(1).max(1));
+
+    let font_size = picker.font_size();
+    let cols =
+        (img.width() as u32).div_ceil(font_size.width as u32).max(1) as u16;
+    let rows =
+        (img.height() as u32).div_ceil(font_size.height as u32).max(1) as u16;
+    let size = ratatui::layout::Size::new(cols.min(area.width), rows.min(area.height));
+    let protocol = picker
+        .new_protocol(img, size, Resize::Fit(None))
+        .map_err(|e| format!("Protocol error: {e}"))?;
+
+    terminal
+        .draw(|f| {
+            let chunks = Layout::default()
+                .direction(Direction::Vertical)
+                .constraints([Constraint::Min(1), Constraint::Length(1)])
+                .split(f.area());
+            f.render_widget(Image::new(&protocol), chunks[0]);
+            let footer = Paragraph::new(Line::from(format!(
+                "excd view (one-shot) | protocol: {label}"
+            )))
+            .style(Style::default().add_modifier(Modifier::DIM));
+            f.render_widget(footer, chunks[1]);
+        })
+        .map_err(|e| format!("Draw error: {e}"))?;
+    // Move cursor below the image so the shell prompt does not overwrite.
+    println!();
+    let _ = io::stdout().flush();
     Ok(())
 }
 
-/// Run interactive viewer with keyboard controls.
+/// Interactive viewer (alternate screen + raw mode + ratatui app).
 pub fn run_interactive(content: &str) -> Result<(), String> {
     run_interactive_with(content, None)
 }
 
-/// Same as [`run_interactive`] but allows forcing a specific protocol.
 pub fn run_interactive_with(
     content: &str,
     force: Option<ImageProtocol>,
 ) -> Result<(), String> {
-    use crossterm::event::{self, Event, KeyCode};
-    use crossterm::terminal;
+    let requested = force.unwrap_or(ImageProtocol::Auto);
+    let mut picker = build_picker(requested);
+    let label = picker_protocol_label(&picker, requested);
+
+    enable_raw_mode().map_err(|e| format!("Terminal error: {e}"))?;
+    let _guard = scopeguard::guard((), |_| {
+        let _ = disable_raw_mode();
+        let _ = execute!(io::stdout(), LeaveAlternateScreen);
+    });
+    execute!(io::stdout(), EnterAlternateScreen).map_err(|e| format!("Terminal error: {e}"))?;
+
+    let backend = CrosstermBackend::new(io::stdout());
+    let mut terminal = Terminal::new(backend).map_err(|e| format!("Terminal error: {e}"))?;
 
     let mut state = ViewState::default();
-    let protocol = resolve_protocol(force);
-
-    terminal::enable_raw_mode().map_err(|e| format!("Terminal error: {e}"))?;
-    let _guard = scopeguard::guard((), |_| {
-        let _ = terminal::disable_raw_mode();
-    });
-
-    let png_data = render_to_png(content, &state)?;
-    display_image(&png_data, protocol, &state);
+    let mut protocol = build_protocol(&mut picker, content, &state)?;
 
     loop {
-        if event::poll(std::time::Duration::from_millis(100))
+        terminal
+            .draw(|f| draw_interactive(f, &protocol, &state, label))
+            .map_err(|e| format!("Draw error: {e}"))?;
+
+        if event::poll(Duration::from_millis(100))
             .map_err(|e| format!("Event error: {e}"))?
         {
             if let Event::Key(key) = event::read().map_err(|e| format!("Event error: {e}"))? {
+                let mut dirty = true;
                 match key.code {
                     KeyCode::Char('q') | KeyCode::Esc => break,
-                    KeyCode::Char('+') | KeyCode::Char('=') => {
-                        state.zoom_in();
-                        let png = render_to_png(content, &state)?;
-                        display_image(&png, protocol, &state);
-                    }
-                    KeyCode::Char('-') => {
-                        state.zoom_out();
-                        let png = render_to_png(content, &state)?;
-                        display_image(&png, protocol, &state);
-                    }
-                    KeyCode::Char('h') | KeyCode::Left => {
-                        state.pan_left();
-                        let png = render_to_png(content, &state)?;
-                        display_image(&png, protocol, &state);
-                    }
-                    KeyCode::Char('l') | KeyCode::Right => {
-                        state.pan_right();
-                        let png = render_to_png(content, &state)?;
-                        display_image(&png, protocol, &state);
-                    }
-                    KeyCode::Char('k') | KeyCode::Up => {
-                        state.pan_up();
-                        let png = render_to_png(content, &state)?;
-                        display_image(&png, protocol, &state);
-                    }
-                    KeyCode::Char('j') | KeyCode::Down => {
-                        state.pan_down();
-                        let png = render_to_png(content, &state)?;
-                        display_image(&png, protocol, &state);
-                    }
-                    KeyCode::Char('r') => {
-                        state.reset();
-                        let png = render_to_png(content, &state)?;
-                        display_image(&png, protocol, &state);
-                    }
+                    KeyCode::Char('+') | KeyCode::Char('=') => state.zoom_in(),
+                    KeyCode::Char('-') => state.zoom_out(),
+                    KeyCode::Char('h') | KeyCode::Left => state.pan_left(),
+                    KeyCode::Char('l') | KeyCode::Right => state.pan_right(),
+                    KeyCode::Char('k') | KeyCode::Up => state.pan_up(),
+                    KeyCode::Char('j') | KeyCode::Down => state.pan_down(),
+                    KeyCode::Char('r') => state.reset(),
                     KeyCode::Char('s') => {
                         let png = render_to_png(content, &state)?;
-                        let path = "excd-screenshot.png";
-                        std::fs::write(path, &png).map_err(|e| format!("Save error: {e}"))?;
-                        eprintln!("Saved: {path}");
+                        std::fs::write("excd-screenshot.png", &png)
+                            .map_err(|e| format!("Save error: {e}"))?;
+                        dirty = false;
                     }
                     KeyCode::Char('e') => {
                         let svg = render_to_svg(content, &state)?;
-                        let path = "excd-screenshot.svg";
-                        std::fs::write(path, svg).map_err(|e| format!("Save error: {e}"))?;
-                        eprintln!("Saved: {path}");
+                        std::fs::write("excd-screenshot.svg", svg)
+                            .map_err(|e| format!("Save error: {e}"))?;
+                        dirty = false;
                     }
-                    _ => {}
+                    _ => dirty = false,
+                }
+                if dirty {
+                    protocol = build_protocol(&mut picker, content, &state)?;
                 }
             }
         }
     }
-
     Ok(())
 }
 
-fn display_image(png_data: &[u8], protocol: ImageProtocol, state: &ViewState) {
-    // Clear screen and show image
-    print!("\x1b[2J\x1b[H");
-    match protocol {
-        ImageProtocol::Kitty => output_kitty(png_data),
-        ImageProtocol::Sixel => output_sixel(png_data),
-        ImageProtocol::Iterm2 => output_iterm2(png_data),
-        ImageProtocol::Halfblock => output_halfblock(png_data),
-        ImageProtocol::Ascii => {
-            println!(
-                "Zoom: {:.0}% | Pan: {:.0},{:.0}",
-                state.zoom * 100.0,
-                state.pan_x,
-                state.pan_y
-            );
-            println!("q: quit | +/-: zoom | h/j/k/l: pan | r: reset | s: save PNG | e: save SVG");
-        }
-    }
-    println!(
-        "\nZoom: {:.0}% | Pan: {:.0},{:.0} | protocol: {}",
+fn build_protocol(
+    picker: &mut Picker,
+    content: &str,
+    state: &ViewState,
+) -> Result<ratatui_image::protocol::Protocol, String> {
+    let img = render_to_image(content, state)?;
+    let font_size = picker.font_size();
+    let cols = (img.width() as u32)
+        .div_ceil(font_size.width as u32)
+        .max(1) as u16;
+    let rows = (img.height() as u32)
+        .div_ceil(font_size.height as u32)
+        .max(1) as u16;
+    let size = ratatui::layout::Size::new(cols, rows);
+    picker
+        .new_protocol(img, size, Resize::Fit(None))
+        .map_err(|e| format!("Protocol error: {e}"))
+}
+
+fn draw_interactive(
+    f: &mut ratatui::Frame<'_>,
+    protocol: &ratatui_image::protocol::Protocol,
+    state: &ViewState,
+    label: &'static str,
+) {
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints([Constraint::Min(1), Constraint::Length(1)])
+        .split(f.area());
+
+    let block = Block::default().borders(Borders::NONE);
+    f.render_widget(block, chunks[0]);
+    f.render_widget(Image::new(protocol), chunks[0]);
+
+    let footer = Paragraph::new(Line::from(format!(
+        "Zoom: {:.0}% | Pan: {:.0},{:.0} | protocol: {label} | q quit  +/- zoom  hjkl pan  r reset  s save PNG  e save SVG",
         state.zoom * 100.0,
         state.pan_x,
         state.pan_y,
-        protocol.label()
-    );
-    println!("q: quit | +/-: zoom | h/j/k/l: pan | r: reset | s: save PNG | e: save SVG");
-    io::stdout().flush().ok();
-}
-
-fn output_kitty(data: &[u8]) {
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(data);
-    // Kitty graphics protocol: transmit+display
-    let chunk_size = 4096;
-    for (i, chunk) in encoded.as_bytes().chunks(chunk_size).enumerate() {
-        let m = if i == 0 && chunk.len() < chunk_size {
-            1
-        } else {
-            0
-        };
-        print!("\x1b_Ga=T,f=100,m={m},t=f;");
-        io::stdout().write_all(chunk).ok();
-        print!("\x1b\\");
-    }
-    io::stdout().flush().ok();
-}
-
-fn output_sixel(data: &[u8]) {
-    // Decode the PNG, downscale so we don't flood the terminal, then encode
-    // as SIXEL via icy_sixel. On any failure we fall back to halfblock so the
-    // user still sees the rendered diagram instead of an empty escape sequence.
-    let img = match image::load_from_memory(data) {
-        Ok(img) => img,
-        Err(error) => {
-            eprintln!("Sixel decode error: {error}");
-            output_halfblock(data);
-            return;
-        }
-    };
-    let img = img.resize(800, 600, image::imageops::FilterType::Triangle);
-    let rgba = img.to_rgba8();
-    let (width, height) = rgba.dimensions();
-    let image = match icy_sixel::SixelImage::try_from_rgba(
-        rgba.into_raw(),
-        width as usize,
-        height as usize,
-    ) {
-        Ok(image) => image,
-        Err(error) => {
-            eprintln!("Sixel encode error: {error}");
-            output_halfblock(data);
-            return;
-        }
-    };
-    match image.encode() {
-        Ok(sixel) => {
-            print!("{sixel}");
-            io::stdout().flush().ok();
-        }
-        Err(error) => {
-            eprintln!("Sixel encode error: {error}");
-            output_halfblock(data);
-        }
-    }
-}
-
-fn output_iterm2(data: &[u8]) {
-    use base64::Engine;
-    let encoded = base64::engine::general_purpose::STANDARD.encode(data);
-    print!("\x1b]1337;File=inline=1;size={}:{}", data.len(), encoded);
-    print!("\x07");
-    io::stdout().flush().ok();
-}
-
-fn output_halfblock(data: &[u8]) {
-    // Decode PNG and render as halfblock characters. Each terminal cell
-    // shows two pixels (upper/lower) via U+2580 with foreground+background.
-    // We size the image to the actual terminal viewport (preserving the
-    // image aspect ratio) so we never overflow on small panes nor leave
-    // the cursor hanging at the right edge — many terminals auto-wrap
-    // when the cursor reaches the last column, which would insert a
-    // blank/black row between every halfblock line.
-    let img = match image::load_from_memory(data) {
-        Ok(img) => img,
-        Err(e) => {
-            println!("Image decode error: {e}");
-            return;
-        }
-    };
-    let (cols, rows) = match crossterm::terminal::size() {
-        Ok((c, r)) => (c.max(20) as u32, r.max(8) as u32),
-        Err(_) => (120, 60),
-    };
-    // Stay one column shy of the right edge to avoid auto-wrap.
-    // Each terminal cell holds two vertical pixels.
-    let max_w = cols.saturating_sub(1).max(8);
-    let max_h = rows.saturating_sub(2).max(4) * 2;
-    // Preserve aspect ratio: fit into (max_w x max_h) cell pixels but treat
-    // a cell as 1x2 image pixels (width:height = 1:2 in cell space, so
-    // halve max_h to compare in cell units, then double back).
-    let (orig_w, orig_h) = (img.width().max(1), img.height().max(1));
-    let aspect = orig_w as f64 / orig_h as f64;
-    let cell_h = max_h / 2; // available rows
-    let by_w = max_w as f64;
-    let by_h_w = cell_h as f64 * aspect; // width if we max out rows
-    let (target_cols, target_rows) = if by_h_w <= by_w {
-        (by_h_w.round().max(1.0) as u32, cell_h)
-    } else {
-        let r = (by_w / aspect).round().max(1.0) as u32;
-        (max_w, r)
-    };
-    let target_w = target_cols;
-    let target_h = target_rows * 2;
-    let img = img.resize_exact(
-        target_w.max(1),
-        target_h.max(2),
-        image::imageops::FilterType::Triangle,
-    );
-    let rgb = img.to_rgb8();
-    let (w, h) = rgb.dimensions();
-    let mut out = io::stdout().lock();
-    // Disable line wrap while we paint, restore afterwards.
-    let _ = write!(out, "\x1b[?7l");
-    for y in (0..h).step_by(2) {
-        for x in 0..w {
-            let upper = rgb.get_pixel(x, y);
-            let lower = rgb.get_pixel(x, (y + 1).min(h - 1));
-            let _ = write!(
-                out,
-                "\x1b[38;2;{};{};{};48;2;{};{};{}m\u{2580}",
-                upper[0], upper[1], upper[2], lower[0], lower[1], lower[2],
-            );
-        }
-        // Reset SGR before newline so the bg color does not paint to EOL.
-        let _ = writeln!(out, "\x1b[0m");
-    }
-    let _ = write!(out, "\x1b[?7h");
-    let _ = out.flush();
+    )))
+    .style(Style::default().add_modifier(Modifier::DIM));
+    f.render_widget(footer, chunks[1]);
 }
 
 #[cfg(test)]
@@ -485,16 +365,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn detect_protocol_returns_a_variant() {
-        let protocol = detect_protocol();
-        // Just verify it doesn't panic and returns a valid variant
-        match protocol {
-            ImageProtocol::Kitty
-            | ImageProtocol::Sixel
-            | ImageProtocol::Iterm2
-            | ImageProtocol::Halfblock
-            | ImageProtocol::Ascii => {}
+    fn protocol_parse_round_trip() {
+        for name in ["auto", "kitty", "sixel", "iterm2", "halfblock", "ascii"] {
+            let p = ImageProtocol::parse(name).expect("valid name");
+            assert_eq!(p.label(), name);
         }
+        assert!(ImageProtocol::parse("nope").is_err());
     }
 
     #[test]
@@ -506,20 +382,12 @@ mod tests {
     }
 
     #[test]
-    fn view_state_zoom_increases() {
-        let mut state = ViewState::default();
-        let before = state.zoom;
-        state.zoom_in();
-        assert!(state.zoom > before);
-    }
-
-    #[test]
-    fn view_state_zoom_decreases() {
+    fn view_state_zoom_in_then_out_returns() {
         let mut state = ViewState::default();
         state.zoom_in();
-        let before = state.zoom;
+        let after_in = state.zoom;
         state.zoom_out();
-        assert!(state.zoom < before);
+        assert!(state.zoom < after_in);
     }
 
     #[test]
@@ -542,6 +410,7 @@ mod tests {
         state.pan_right();
         state.reset();
         assert!((state.zoom - 1.0).abs() < f64::EPSILON);
+        assert!((state.pan_x).abs() < f64::EPSILON);
     }
 
     #[test]
@@ -566,5 +435,13 @@ mod tests {
             r#"{"elements":[{"type":"rectangle","id":"r1","x":0,"y":0,"width":50,"height":30}]}"#;
         let svg = render_to_svg(content, &ViewState::default()).unwrap();
         assert!(svg.contains("<svg"));
+    }
+
+    #[test]
+    fn render_to_image_decodes_png() {
+        let content =
+            r#"{"elements":[{"type":"rectangle","id":"r1","x":0,"y":0,"width":50,"height":30}]}"#;
+        let img = render_to_image(content, &ViewState::default()).unwrap();
+        assert!(img.width() > 0 && img.height() > 0);
     }
 }
