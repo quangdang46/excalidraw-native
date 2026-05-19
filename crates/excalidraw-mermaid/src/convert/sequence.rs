@@ -10,7 +10,7 @@ use std::collections::HashMap;
 use merman_render::model::SequenceDiagramLayout;
 use serde_json::Value;
 
-use crate::builder::{self, Arrow, Rect, Text};
+use crate::builder::{self, Arrow};
 use crate::convert::common::{
     edge_with_label, node_with_text, truncate, update_text_box, EdgeOutput, IdGen, NodeOutput,
     NodeShape,
@@ -29,6 +29,11 @@ pub fn convert(
     let mut actor_ids: HashMap<String, String> = HashMap::new();
     // Build lookup from semantic data for actors and messages.
     let actor_labels = index_actors(semantic);
+    let messages_raw = semantic
+        .get("messages")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let messages = index_messages(semantic);
     // Track which actor names we've already emitted (skip "actor-bottom-*" duplicates).
     let mut emitted_actors: HashMap<String, bool> = HashMap::new();
@@ -54,7 +59,21 @@ pub fn convert(
     if !max_y.is_finite() {
         max_y = min_y + 320.0;
     }
-    let lifeline_bottom = max_y + 240.0;
+    // Also compute the lowest edge Y to tighten lifeline length.
+    let mut max_edge_y: f64 = f64::NEG_INFINITY;
+    for edge in &layout.edges {
+        for pt in &edge.points {
+            if pt.y > max_edge_y {
+                max_edge_y = pt.y;
+            }
+        }
+    }
+    let lifeline_extent = if max_edge_y.is_finite() {
+        max_edge_y + 40.0
+    } else {
+        max_y + 80.0
+    };
+    let lifeline_bottom = lifeline_extent.max(max_y + 40.0);
 
     for node in &layout.nodes {
         if node.is_cluster {
@@ -111,10 +130,24 @@ pub fn convert(
         elements.push(lifeline);
     }
 
-    for (idx, edge) in layout.edges.iter().enumerate() {
+    for edge in &layout.edges {
         // Skip lifeline edges — they're rendered above as part of actor emission.
         if edge.id.starts_with("lifeline-") {
             continue;
+        }
+        // Parse the message index from edge ID "msg-N" to index into semantic messages.
+        let msg_idx = edge
+            .id
+            .strip_prefix("msg-")
+            .and_then(|s| s.parse::<usize>().ok());
+        // Skip control-flow edges (alt/else/loop/end): semantic types 10-14.
+        if let Some(mi) = msg_idx {
+            if let Some(msg) = messages_raw.get(mi) {
+                let mtype = msg.get("type").and_then(|v| v.as_u64()).unwrap_or(0);
+                if mtype >= 10 {
+                    continue;
+                }
+            }
         }
         let start_id = actor_ids.get(&edge.from).map(String::as_str);
         let end_id = actor_ids.get(&edge.to).map(String::as_str);
@@ -154,8 +187,11 @@ pub fn convert(
             }
         }
         if let Some(label) = label {
-            // Look up the real message text from semantic data.
-            let label_text = messages.get(idx).cloned().unwrap_or_default();
+            // Look up the real message text from semantic data using edge ID index.
+            let label_text = msg_idx
+                .and_then(|mi| messages.get(mi))
+                .cloned()
+                .unwrap_or_default();
             if !label_text.is_empty() {
                 let mut text_value = label.text;
                 update_text_box(
@@ -171,29 +207,6 @@ pub fn convert(
         }
         elements.push(arrow);
     }
-
-    let _ = Text {
-        id: "",
-        x: 0.0,
-        y: 0.0,
-        width: 0.0,
-        height: 0.0,
-        text: "",
-        font_size: options.font_size,
-        align: "left",
-        container_id: None,
-        frame_id: None,
-    };
-    let _ = Rect {
-        id: "",
-        x: 0.0,
-        y: 0.0,
-        width: 0.0,
-        height: 0.0,
-        fill: None,
-        rounded: false,
-        frame_id: None,
-    };
 
     Ok(elements)
 }
