@@ -1,0 +1,27 @@
+erDiagram
+    DEPARTMENT ||--o{ EMPLOYEE : employs
+    EMPLOYEE ||--o{ PROJECT : "works on"
+    PROJECT }o--|| CLIENT : "contracted by"
+    EMPLOYEE |o--o| EMPLOYEE : "manages"
+    DEPARTMENT {
+        int dept_id PK
+        string name
+        string location
+    }
+    EMPLOYEE {
+        int emp_id PK
+        string name
+        string role
+        int dept_id FK
+    }
+    PROJECT {
+        int proj_id PK
+        string title
+        date start_date
+        date end_date
+    }
+    CLIENT {
+        int client_id PK
+        string company
+        string contact
+    }

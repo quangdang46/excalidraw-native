@@ -1,0 +1,10 @@
+flowchart TD
+    A[Start]:::green --> B{Check}:::orange
+    B -->|OK| C[Process]:::blue
+    B -->|Fail| D[Error]:::red
+    C --> E[End]:::green
+    D --> E
+    classDef green fill:#d4edda,stroke:#28a745
+    classDef orange fill:#fff3cd,stroke:#ffc107
+    classDef blue fill:#cce5ff,stroke:#007bff
+    classDef red fill:#f8d7da,stroke:#dc3545

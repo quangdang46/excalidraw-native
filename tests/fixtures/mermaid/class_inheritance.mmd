@@ -1,0 +1,24 @@
+classDiagram
+    class Shape {
+        <<abstract>>
+        +float area()
+        +float perimeter()
+    }
+    class Circle {
+        +float radius
+        +float area()
+        +float perimeter()
+    }
+    class Rectangle {
+        +float width
+        +float height
+        +float area()
+        +float perimeter()
+    }
+    class Square {
+        +float side
+        +float area()
+    }
+    Shape <|-- Circle
+    Shape <|-- Rectangle
+    Rectangle <|-- Square

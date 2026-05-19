@@ -1,0 +1,13 @@
+sequenceDiagram
+    participant User
+    participant API
+    participant Auth
+    participant DB
+    User->>+API: request
+    API->>+Auth: validate token
+    Auth->>+DB: lookup session
+    DB-->>-Auth: session data
+    Auth-->>-API: valid
+    API->>+DB: fetch data
+    DB-->>-API: results
+    API-->>-User: response

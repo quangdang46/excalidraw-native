@@ -1,0 +1,12 @@
+sequenceDiagram
+    participant Alice
+    participant Bob
+    participant Charlie
+    Note over Alice: Alice prepares message
+    Alice->>Bob: Hello Bob
+    Note over Alice,Bob: Shared context
+    Bob->>Charlie: Forward message
+    Note right of Charlie: Charlie processes
+    Charlie-->>Bob: Acknowledged
+    Bob-->>Alice: Done
+    Note over Alice,Charlie: Complete flow

@@ -1,0 +1,12 @@
+stateDiagram-v2
+    [*] --> Received
+    Received --> Validating
+    state check <<choice>>
+    Validating --> check
+    check --> Approved : valid
+    check --> Rejected : invalid
+    Approved --> Processing
+    Processing --> Shipped
+    Shipped --> Delivered
+    Delivered --> [*]
+    Rejected --> [*]

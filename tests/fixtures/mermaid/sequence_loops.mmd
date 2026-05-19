@@ -1,0 +1,20 @@
+sequenceDiagram
+    participant Client
+    participant Server
+    participant DB
+    Client->>Server: POST /login
+    Server->>DB: SELECT user
+    DB-->>Server: user row
+    alt valid credentials
+        Server-->>Client: 200 OK + token
+    else invalid
+        Server-->>Client: 401 Unauthorized
+    end
+    loop every 30s
+        Client->>Server: heartbeat
+        Server-->>Client: ack
+    end
+    Client->>Server: GET /data
+    Server->>DB: query
+    DB-->>Server: results
+    Server-->>Client: 200 JSON
