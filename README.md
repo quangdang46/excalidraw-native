@@ -70,6 +70,36 @@ Target v0.1 features:
 
 ---
 
+## Rendered examples
+
+All images below are rendered entirely by `excalidraw-native` from `.excalidraw` fixture files — no browser involved.
+
+### Shapes with colors, fills, and arrows
+
+![Complex diagram](docs/examples/complex_diagram.png)
+
+Rectangles, diamonds, ellipses, arrows, hatched fills, dashed lines, and multiple colors — rendered with the hand-drawn rough style via `rough-rs`.
+
+### Basic shapes
+
+![Simple shapes](docs/examples/simple_shapes.png)
+
+Rectangle, ellipse, and diamond with solid and hatched fills at different stroke widths.
+
+### Freedraw strokes
+
+![Freedraw](docs/examples/freedraw.png)
+
+Freehand pen strokes rendered as smooth polylines.
+
+### Frame clipping
+
+![Frame clip](docs/examples/frame_clip.png)
+
+Elements clipped to frame boundaries with dashed frame borders.
+
+---
+
 ## What it does not do
 
 `excalidraw-native` is a renderer, not an editor.
