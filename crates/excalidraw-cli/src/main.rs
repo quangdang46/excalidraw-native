@@ -572,7 +572,7 @@ fn main() -> Result<()> {
                 ),
                 None => None,
             };
-            let ss = supersample.max(1.0).min(8.0);
+            let ss = supersample.clamp(1.0, 8.0);
             if no_interactive || !has_tty {
                 excalidraw_tui::view_file_tuned(&raw, force, ss)
                     .map_err(|e| anyhow::anyhow!("{}", e))?;
