@@ -4,6 +4,7 @@
 //! image handling, frames, and render warnings.
 
 use std::collections::HashSet;
+use std::sync::Arc;
 
 use excalidraw_core::{
     font_family_css, font_family_primary, font_family_width_factor, Arrowhead, BaseElement, Color,
@@ -534,7 +535,13 @@ pub fn render_png(
     document = document.node(content);
     let svg = document.to_string()?;
 
-    let tree = usvg::Tree::from_str(&svg, &usvg::Options::default())
+    let mut fontdb = fontdb::Database::new();
+    fontdb.load_system_fonts();
+    let usvg_opts = usvg::Options {
+        fontdb: Arc::new(fontdb),
+        ..usvg::Options::default()
+    };
+    let tree = usvg::Tree::from_str(&svg, &usvg_opts)
         .map_err(|error| RenderError::InvalidSvg(error.to_string()))?;
 
     let size = tree.size();

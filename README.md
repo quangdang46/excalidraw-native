@@ -70,6 +70,30 @@ Target v0.1 features:
 
 ---
 
+## Rendered examples
+
+All images below are rendered entirely by `excalidraw-native` — no browser, no Puppeteer, no Node.js.
+
+### Microservices architecture
+
+![Architecture diagram](docs/examples/architecture_diagram.png)
+
+Multi-layer system diagram with rectangles, diamonds, ellipses, color-coded services, dashed/dotted arrows, cross-hatch database nodes, layer dividers, and a Redis/MQ infrastructure tier.
+
+### Request processing flowchart
+
+![Flowchart](docs/examples/flowchart_complex.png)
+
+Decision-branching flowchart with validation gates, cache hit/miss paths, error handling with logging, and multiple arrow styles (solid, dashed, dotted) connecting ellipses, rectangles, and diamonds.
+
+### Mixed shapes and styles
+
+![Complex diagram](docs/examples/complex_diagram.png)
+
+Rectangles, diamonds, ellipses, arrows, hatched fills, dashed lines, and freedraw strokes rendered with the hand-drawn rough style.
+
+---
+
 ## What it does not do
 
 `excalidraw-native` is a renderer, not an editor.
