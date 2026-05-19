@@ -1,0 +1,38 @@
+   Compiling excalidraw-cli v0.1.0 (/data/projects/excalidraw-native/crates/excalidraw-cli)
+    Finished `bench` profile [optimized] target(s) in 1m 03s
+     Running benches/mcp_e2e.rs (target/release/deps/mcp_e2e-a577f1987e0daa65)
+Gnuplot not found, using plotters backend
+bench-target group=mcp_e2e case=simple_parse_stdio target_ms=150 fail_ms=1500 mode=soft-warning
+Benchmarking mcp_e2e/parse_elements/simple_parse_stdio target=150ms fail=1500ms
+Benchmarking mcp_e2e/parse_elements/simple_parse_stdio target=150ms fail=1500ms: Warming up for 3.0000 s
+Benchmarking mcp_e2e/parse_elements/simple_parse_stdio target=150ms fail=1500ms: Collecting 10 samples in estimated 5.4585 s (330 iterations)
+Benchmarking mcp_e2e/parse_elements/simple_parse_stdio target=150ms fail=1500ms: Analyzing
+mcp_e2e/parse_elements/simple_parse_stdio target=150ms fail=1500ms
+                        time:   [15.645 ms 16.037 ms 16.665 ms]
+                        change: [-92.984% -88.676% -72.712%] (p = 0.03 < 0.05)
+                        Performance has improved.
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) high mild
+  1 (10.00%) high severe
+bench-target group=mcp_e2e case=complex_describe_stdio target_ms=180 fail_ms=1800 mode=soft-warning
+Benchmarking mcp_e2e/describe_scene/complex_describe_stdio target=180ms fail=1800ms
+Benchmarking mcp_e2e/describe_scene/complex_describe_stdio target=180ms fail=1800ms: Warming up for 3.0000 s
+Benchmarking mcp_e2e/describe_scene/complex_describe_stdio target=180ms fail=1800ms: Collecting 10 samples in estimated 5.2488 s (330 iterations)
+Benchmarking mcp_e2e/describe_scene/complex_describe_stdio target=180ms fail=1800ms: Analyzing
+mcp_e2e/describe_scene/complex_describe_stdio target=180ms fail=1800ms
+                        time:   [17.158 ms 17.788 ms 18.689 ms]
+                        change: [-87.840% -86.681% -85.510%] (p = 0.01 < 0.05)
+                        Performance has improved.
+Found 3 outliers among 10 measurements (30.00%)
+  1 (10.00%) low severe
+  2 (20.00%) high mild
+bench-target group=mcp_e2e case=large_validate_stdio target_ms=250 fail_ms=2500 mode=soft-warning
+Benchmarking mcp_e2e/validate/large_validate_stdio target=250ms fail=2500ms
+Benchmarking mcp_e2e/validate/large_validate_stdio target=250ms fail=2500ms: Warming up for 3.0000 s
+Benchmarking mcp_e2e/validate/large_validate_stdio target=250ms fail=2500ms: Collecting 10 samples in estimated 5.7205 s (275 iterations)
+Benchmarking mcp_e2e/validate/large_validate_stdio target=250ms fail=2500ms: Analyzing
+mcp_e2e/validate/large_validate_stdio target=250ms fail=2500ms
+                        time:   [19.744 ms 20.118 ms 20.585 ms]
+                        change: [-78.541% -75.634% -72.007%] (p = 0.02 < 0.05)
+                        Performance has improved.
+

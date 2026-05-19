@@ -122,6 +122,15 @@ enum Commands {
         /// Auto-enabled when stdin or stdout is not a TTY.
         #[arg(long)]
         no_interactive: bool,
+        /// Force a specific image protocol instead of auto-detect.
+        /// Also honors EXCD_VIEW_PROTOCOL.
+        #[arg(long, value_name = "PROTO")]
+        protocol: Option<String>,
+        /// Render-side supersampling factor for halfblock sharpness.
+        /// 1.0 renders at terminal-cell resolution; higher values render
+        /// the diagram at N x scale and downsample. Default 2.0.
+        #[arg(long, value_name = "FACTOR", default_value = "2.0")]
+        supersample: f64,
     },
     /// Validate a .excalidraw file
     Validate {
@@ -551,13 +560,25 @@ fn main() -> Result<()> {
         Commands::View {
             input,
             no_interactive,
+            protocol,
+            supersample,
         } => {
             let raw = read_input(&input)?;
             let has_tty = io::stdin().is_terminal() && io::stdout().is_terminal();
+            let force = match protocol.as_deref() {
+                Some(name) => Some(
+                    excalidraw_tui::ImageProtocol::parse(name)
+                        .map_err(|e| anyhow::anyhow!("{}", e))?,
+                ),
+                None => None,
+            };
+            let ss = supersample.max(1.0).min(8.0);
             if no_interactive || !has_tty {
-                excalidraw_tui::view_file(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+                excalidraw_tui::view_file_tuned(&raw, force, ss)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
             } else {
-                excalidraw_tui::run_interactive(&raw).map_err(|e| anyhow::anyhow!("{}", e))?;
+                excalidraw_tui::run_interactive_tuned(&raw, force, ss)
+                    .map_err(|e| anyhow::anyhow!("{}", e))?;
             }
         }
         Commands::Serve => {

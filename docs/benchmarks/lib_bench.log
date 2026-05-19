@@ -1,0 +1,74 @@
+   Compiling serde_core v1.0.228
+   Compiling syn v2.0.117
+   Compiling serde v1.0.228
+   Compiling serde_json v1.0.149
+   Compiling num-traits v0.2.19
+   Compiling futures-sink v0.3.32
+   Compiling futures-core v0.3.32
+   Compiling memchr v2.8.0
+   Compiling futures-task v0.3.32
+   Compiling regex-syntax v0.8.10
+   Compiling clap_builder v4.6.0
+   Compiling serde_derive v1.0.228
+   Compiling zerocopy-derive v0.8.48
+   Compiling thiserror-impl v1.0.69
+   Compiling regex-automata v0.4.14
+   Compiling zerocopy v0.8.48
+   Compiling futures-util v0.3.32
+   Compiling futures-channel v0.3.32
+   Compiling futures-io v0.3.32
+   Compiling futures v0.3.32
+   Compiling regex v1.12.3
+   Compiling plotters v0.3.7
+   Compiling thiserror v1.0.69
+   Compiling tinytemplate v1.2.1
+   Compiling clap v4.6.1
+   Compiling tokio v1.52.3
+   Compiling excalidraw-core v0.1.0 (/data/projects/excalidraw-native/crates/excalidraw-core)
+   Compiling half v2.7.1
+   Compiling ciborium-ll v0.2.2
+   Compiling ciborium v0.2.2
+   Compiling criterion v0.5.1
+    Finished `bench` profile [optimized] target(s) in 3m 49s
+     Running benches/lib_bench.rs (target/release/deps/lib_bench-a7c92658f2ff131e)
+Gnuplot not found, using plotters backend
+bench-target group=parse_lib case=simple target_ms=2 fail_ms=20 mode=soft-warning
+Benchmarking parse/simple target=2ms fail=20ms
+Benchmarking parse/simple target=2ms fail=20ms: Warming up for 3.0000 s
+Benchmarking parse/simple target=2ms fail=20ms: Collecting 100 samples in estimated 5.0481 s (449k iterations)
+Benchmarking parse/simple target=2ms fail=20ms: Analyzing
+parse/simple target=2ms fail=20ms
+                        time:   [10.842 µs 11.796 µs 12.818 µs]
+
+bench-target group=parse_lib case=large_200 target_ms=20 fail_ms=200 mode=soft-warning
+Benchmarking parse/large_200 target=20ms fail=200ms
+Benchmarking parse/large_200 target=20ms fail=200ms: Warming up for 3.0000 s
+Benchmarking parse/large_200 target=20ms fail=200ms: Collecting 100 samples in estimated 6.3144 s (10k iterations)
+Benchmarking parse/large_200 target=20ms fail=200ms: Analyzing
+parse/large_200 target=20ms fail=200ms
+                        time:   [813.89 µs 915.33 µs 1.0282 ms]
+Found 5 outliers among 100 measurements (5.00%)
+  4 (4.00%) high mild
+  1 (1.00%) high severe
+
+bench-target group=normalize_lib case=simple target_ms=1 fail_ms=10 mode=soft-warning
+Benchmarking normalize/simple target=1ms fail=10ms
+Benchmarking normalize/simple target=1ms fail=10ms: Warming up for 3.0000 s
+Benchmarking normalize/simple target=1ms fail=10ms: Collecting 100 samples in estimated 5.0011 s (1.5M iterations)
+Benchmarking normalize/simple target=1ms fail=10ms: Analyzing
+normalize/simple target=1ms fail=10ms
+                        time:   [3.8090 µs 3.9441 µs 4.0891 µs]
+Found 3 outliers among 100 measurements (3.00%)
+  3 (3.00%) high mild
+
+bench-target group=normalize_lib case=large_200 target_ms=10 fail_ms=100 mode=soft-warning
+Benchmarking normalize/large_200 target=10ms fail=100ms
+Benchmarking normalize/large_200 target=10ms fail=100ms: Warming up for 3.0000 s
+Benchmarking normalize/large_200 target=10ms fail=100ms: Collecting 100 samples in estimated 5.5573 s (10k iterations)
+Benchmarking normalize/large_200 target=10ms fail=100ms: Analyzing
+normalize/large_200 target=10ms fail=100ms
+                        time:   [285.38 µs 303.20 µs 322.89 µs]
+Found 10 outliers among 100 measurements (10.00%)
+  3 (3.00%) high mild
+  7 (7.00%) high severe
+

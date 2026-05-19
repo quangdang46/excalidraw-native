@@ -126,10 +126,22 @@ excd validate diagram.excalidraw
 ### Preview in terminal
 
 ```bash
+# auto-detect protocol (kitty / sixel / iterm2 / halfblock fallback)
 excd view diagram.excalidraw
+
+# force a specific protocol if your terminal lies about its capabilities
+excd view diagram.excalidraw --protocol halfblock
+EXCD_VIEW_PROTOCOL=kitty excd view diagram.excalidraw
+
+# one-shot render (auto-enabled when stdout is not a TTY)
+excd view diagram.excalidraw --no-interactive
 ```
 
-Terminal preview is designed for Kitty, Sixel, iTerm2, and halfblock fallback modes.
+`excd view` prints the chosen protocol on stderr (`excd view: protocol=...`)
+and includes it in the interactive status line so you can tell when
+auto-detect is wrong. Auto-detect is conservative: it only emits Sixel
+when `TERM` itself contains `sixel`, otherwise it falls back to halfblock
+which works on any truecolor / 256-color terminal.
 
 ---
 
@@ -519,6 +531,28 @@ cargo test
 cargo fmt --all
 cargo clippy --workspace --all-targets -- -D warnings
 ```
+
+### Benchmarks
+
+Criterion benches live next to each crate and are driven from the workspace.
+See [BENCHMARKS.md](BENCHMARKS.md) for the latest baseline numbers, soft
+targets, environment, and an overview diagram self-rendered through `excd`.
+
+```bash
+# one-shot: build excd, run every Criterion bench, regenerate the diagram
+scripts/bench_all.sh
+
+# or a single crate:
+cargo bench -p excalidraw-core   --bench lib_bench
+cargo bench -p excalidraw-render --bench render_bench
+EXCD_RUN_CRITERION_BENCHES=1 \
+  cargo bench -p excalidraw-mermaid --bench mermaid_bench
+cargo bench -p excalidraw-cli    --bench cli_e2e
+cargo bench -p excalidraw-cli    --bench mcp_e2e
+```
+
+Raw Criterion logs are written to `docs/benchmarks/*.log` and HTML reports
+to `target/criterion/report/index.html`.
 
 ### Run CLI locally
 

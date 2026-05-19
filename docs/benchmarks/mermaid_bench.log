@@ -1,0 +1,378 @@
+    Finished `bench` profile [optimized] target(s) in 2.35s
+     Running benches/mermaid_bench.rs (target/release/deps/mermaid_bench-2873c51ca3d307e7)
+Gnuplot not found, using plotters backend
+Benchmarking mermaid_layout/flowchart_tiny
+Benchmarking mermaid_layout/flowchart_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_layout/flowchart_tiny: Collecting 10 samples in estimated 502.67 ms (1100 iterations)
+Benchmarking mermaid_layout/flowchart_tiny: Analyzing
+mermaid_layout/flowchart_tiny
+                        time:   [423.25 µs 445.27 µs 475.49 µs]
+Benchmarking mermaid_layout/flowchart_small
+Benchmarking mermaid_layout/flowchart_small: Warming up for 200.00 ms
+Benchmarking mermaid_layout/flowchart_small: Collecting 10 samples in estimated 524.35 ms (605 iterations)
+Benchmarking mermaid_layout/flowchart_small: Analyzing
+mermaid_layout/flowchart_small
+                        time:   [832.36 µs 871.14 µs 899.14 µs]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+Benchmarking mermaid_layout/flowchart_medium
+Benchmarking mermaid_layout/flowchart_medium: Warming up for 200.00 ms
+Benchmarking mermaid_layout/flowchart_medium: Collecting 10 samples in estimated 666.21 ms (165 iterations)
+Benchmarking mermaid_layout/flowchart_medium: Analyzing
+mermaid_layout/flowchart_medium
+                        time:   [4.0963 ms 4.2691 ms 4.4082 ms]
+Benchmarking mermaid_layout/flowchart_large
+Benchmarking mermaid_layout/flowchart_large: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 857.2ms or enable flat sampling.
+Benchmarking mermaid_layout/flowchart_large: Collecting 10 samples in estimated 857.22 ms (55 iterations)
+Benchmarking mermaid_layout/flowchart_large: Analyzing
+mermaid_layout/flowchart_large
+                        time:   [14.657 ms 15.097 ms 15.466 ms]
+Benchmarking mermaid_layout/sequence_tiny
+Benchmarking mermaid_layout/sequence_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_layout/sequence_tiny: Collecting 10 samples in estimated 502.42 ms (1320 iterations)
+Benchmarking mermaid_layout/sequence_tiny: Analyzing
+mermaid_layout/sequence_tiny
+                        time:   [326.25 µs 361.68 µs 402.60 µs]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking mermaid_layout/sequence_medium
+Benchmarking mermaid_layout/sequence_medium: Warming up for 200.00 ms
+Benchmarking mermaid_layout/sequence_medium: Collecting 10 samples in estimated 529.31 ms (825 iterations)
+Benchmarking mermaid_layout/sequence_medium: Analyzing
+mermaid_layout/sequence_medium
+                        time:   [591.03 µs 648.03 µs 698.31 µs]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking mermaid_layout/class_tiny
+Benchmarking mermaid_layout/class_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_layout/class_tiny: Collecting 10 samples in estimated 514.59 ms (825 iterations)
+Benchmarking mermaid_layout/class_tiny: Analyzing
+mermaid_layout/class_tiny
+                        time:   [548.99 µs 559.09 µs 575.07 µs]
+Benchmarking mermaid_layout/class_medium
+Benchmarking mermaid_layout/class_medium: Warming up for 200.00 ms
+Benchmarking mermaid_layout/class_medium: Collecting 10 samples in estimated 564.74 ms (275 iterations)
+Benchmarking mermaid_layout/class_medium: Analyzing
+mermaid_layout/class_medium
+                        time:   [2.0074 ms 2.0922 ms 2.1943 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+Benchmarking mermaid_layout/state_tiny
+Benchmarking mermaid_layout/state_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_layout/state_tiny: Collecting 10 samples in estimated 502.70 ms (440 iterations)
+Benchmarking mermaid_layout/state_tiny: Analyzing
+mermaid_layout/state_tiny
+                        time:   [1.0580 ms 1.1116 ms 1.1752 ms]
+Benchmarking mermaid_layout/state_medium
+Benchmarking mermaid_layout/state_medium: Warming up for 200.00 ms
+Benchmarking mermaid_layout/state_medium: Collecting 10 samples in estimated 585.29 ms (165 iterations)
+Benchmarking mermaid_layout/state_medium: Analyzing
+mermaid_layout/state_medium
+                        time:   [3.4754 ms 3.6325 ms 3.8123 ms]
+
+Benchmarking mermaid_convert/flowchart_tiny
+Benchmarking mermaid_convert/flowchart_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_convert/flowchart_tiny: Collecting 10 samples in estimated 500.62 ms (8030 iterations)
+Benchmarking mermaid_convert/flowchart_tiny: Analyzing
+mermaid_convert/flowchart_tiny
+                        time:   [62.216 µs 63.413 µs 64.270 µs]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking mermaid_convert/flowchart_small
+Benchmarking mermaid_convert/flowchart_small: Warming up for 200.00 ms
+Benchmarking mermaid_convert/flowchart_small: Collecting 10 samples in estimated 510.34 ms (2200 iterations)
+Benchmarking mermaid_convert/flowchart_small: Analyzing
+mermaid_convert/flowchart_small
+                        time:   [230.29 µs 232.75 µs 235.95 µs]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low severe
+Benchmarking mermaid_convert/flowchart_medium
+Benchmarking mermaid_convert/flowchart_medium: Warming up for 200.00 ms
+Benchmarking mermaid_convert/flowchart_medium: Collecting 10 samples in estimated 562.76 ms (330 iterations)
+Benchmarking mermaid_convert/flowchart_medium: Analyzing
+mermaid_convert/flowchart_medium
+                        time:   [1.4949 ms 1.5376 ms 1.6057 ms]
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high mild
+Benchmarking mermaid_convert/flowchart_large
+Benchmarking mermaid_convert/flowchart_large: Warming up for 200.00 ms
+Benchmarking mermaid_convert/flowchart_large: Collecting 10 samples in estimated 515.49 ms (165 iterations)
+Benchmarking mermaid_convert/flowchart_large: Analyzing
+mermaid_convert/flowchart_large
+                        time:   [4.2600 ms 4.5981 ms 4.8379 ms]
+Benchmarking mermaid_convert/sequence_tiny
+Benchmarking mermaid_convert/sequence_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_convert/sequence_tiny: Collecting 10 samples in estimated 501.70 ms (2090 iterations)
+Benchmarking mermaid_convert/sequence_tiny: Analyzing
+mermaid_convert/sequence_tiny
+                        time:   [227.13 µs 233.89 µs 242.66 µs]
+Benchmarking mermaid_convert/sequence_medium
+Benchmarking mermaid_convert/sequence_medium: Warming up for 200.00 ms
+Benchmarking mermaid_convert/sequence_medium: Collecting 10 samples in estimated 520.54 ms (385 iterations)
+Benchmarking mermaid_convert/sequence_medium: Analyzing
+mermaid_convert/sequence_medium
+                        time:   [1.2539 ms 1.3117 ms 1.3557 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+Benchmarking mermaid_convert/class_tiny
+Benchmarking mermaid_convert/class_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_convert/class_tiny: Collecting 10 samples in estimated 501.30 ms (6160 iterations)
+Benchmarking mermaid_convert/class_tiny: Analyzing
+mermaid_convert/class_tiny
+                        time:   [65.156 µs 73.248 µs 83.041 µs]
+Benchmarking mermaid_convert/class_medium
+Benchmarking mermaid_convert/class_medium: Warming up for 200.00 ms
+Benchmarking mermaid_convert/class_medium: Collecting 10 samples in estimated 513.70 ms (1210 iterations)
+Benchmarking mermaid_convert/class_medium: Analyzing
+mermaid_convert/class_medium
+                        time:   [382.11 µs 415.06 µs 454.28 µs]
+Benchmarking mermaid_convert/state_tiny
+Benchmarking mermaid_convert/state_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_convert/state_tiny: Collecting 10 samples in estimated 506.23 ms (1540 iterations)
+Benchmarking mermaid_convert/state_tiny: Analyzing
+mermaid_convert/state_tiny
+                        time:   [384.03 µs 428.78 µs 477.58 µs]
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low severe
+  1 (10.00%) high severe
+Benchmarking mermaid_convert/state_medium
+Benchmarking mermaid_convert/state_medium: Warming up for 200.00 ms
+Benchmarking mermaid_convert/state_medium: Collecting 10 samples in estimated 544.54 ms (165 iterations)
+Benchmarking mermaid_convert/state_medium: Analyzing
+mermaid_convert/state_medium
+                        time:   [2.1314 ms 2.3829 ms 2.5804 ms]
+
+Benchmarking mermaid_end_to_end/flowchart_tiny
+Benchmarking mermaid_end_to_end/flowchart_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_end_to_end/flowchart_tiny: Collecting 10 samples in estimated 535.56 ms (275 iterations)
+Benchmarking mermaid_end_to_end/flowchart_tiny: Analyzing
+mermaid_end_to_end/flowchart_tiny
+                        time:   [1.3612 ms 1.5507 ms 1.7643 ms]
+Benchmarking mermaid_end_to_end/flowchart_small
+Benchmarking mermaid_end_to_end/flowchart_small: Warming up for 200.00 ms
+Benchmarking mermaid_end_to_end/flowchart_small: Collecting 10 samples in estimated 592.81 ms (110 iterations)
+Benchmarking mermaid_end_to_end/flowchart_small: Analyzing
+mermaid_end_to_end/flowchart_small
+                        time:   [3.6048 ms 4.4680 ms 5.2872 ms]
+Benchmarking mermaid_end_to_end/flowchart_medium
+Benchmarking mermaid_end_to_end/flowchart_medium: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 609.6ms or enable flat sampling.
+Benchmarking mermaid_end_to_end/flowchart_medium: Collecting 10 samples in estimated 609.61 ms (55 iterations)
+Benchmarking mermaid_end_to_end/flowchart_medium: Analyzing
+mermaid_end_to_end/flowchart_medium
+                        time:   [13.354 ms 16.159 ms 18.219 ms]
+Benchmarking mermaid_end_to_end/flowchart_large
+Benchmarking mermaid_end_to_end/flowchart_large: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 615.1ms.
+Benchmarking mermaid_end_to_end/flowchart_large: Collecting 10 samples in estimated 615.11 ms (10 iterations)
+Benchmarking mermaid_end_to_end/flowchart_large: Analyzing
+mermaid_end_to_end/flowchart_large
+                        time:   [58.041 ms 70.607 ms 82.378 ms]
+Benchmarking mermaid_end_to_end/sequence_tiny
+Benchmarking mermaid_end_to_end/sequence_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_end_to_end/sequence_tiny: Collecting 10 samples in estimated 549.57 ms (440 iterations)
+Benchmarking mermaid_end_to_end/sequence_tiny: Analyzing
+mermaid_end_to_end/sequence_tiny
+                        time:   [1.6952 ms 2.2194 ms 3.0621 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking mermaid_end_to_end/sequence_medium
+Benchmarking mermaid_end_to_end/sequence_medium: Warming up for 200.00 ms
+Benchmarking mermaid_end_to_end/sequence_medium: Collecting 10 samples in estimated 580.91 ms (110 iterations)
+Benchmarking mermaid_end_to_end/sequence_medium: Analyzing
+mermaid_end_to_end/sequence_medium
+                        time:   [5.3151 ms 6.1835 ms 6.8816 ms]
+Benchmarking mermaid_end_to_end/class_tiny
+Benchmarking mermaid_end_to_end/class_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_end_to_end/class_tiny: Collecting 10 samples in estimated 531.45 ms (330 iterations)
+Benchmarking mermaid_end_to_end/class_tiny: Analyzing
+mermaid_end_to_end/class_tiny
+                        time:   [1.1358 ms 1.4404 ms 1.6531 ms]
+Benchmarking mermaid_end_to_end/class_medium
+Benchmarking mermaid_end_to_end/class_medium: Warming up for 200.00 ms
+Benchmarking mermaid_end_to_end/class_medium: Collecting 10 samples in estimated 674.05 ms (165 iterations)
+Benchmarking mermaid_end_to_end/class_medium: Analyzing
+mermaid_end_to_end/class_medium
+                        time:   [4.1949 ms 4.5113 ms 5.1728 ms]
+Benchmarking mermaid_end_to_end/state_tiny
+Benchmarking mermaid_end_to_end/state_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_end_to_end/state_tiny: Collecting 10 samples in estimated 634.54 ms (165 iterations)
+Benchmarking mermaid_end_to_end/state_tiny: Analyzing
+mermaid_end_to_end/state_tiny
+                        time:   [2.1501 ms 2.3256 ms 2.5335 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+Benchmarking mermaid_end_to_end/state_medium
+Benchmarking mermaid_end_to_end/state_medium: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 839.1ms or enable flat sampling.
+Benchmarking mermaid_end_to_end/state_medium: Collecting 10 samples in estimated 839.09 ms (55 iterations)
+Benchmarking mermaid_end_to_end/state_medium: Analyzing
+mermaid_end_to_end/state_medium
+                        time:   [12.863 ms 15.172 ms 17.018 ms]
+
+Benchmarking mermaid_to_json/flowchart_tiny
+Benchmarking mermaid_to_json/flowchart_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/flowchart_tiny: Collecting 10 samples in estimated 509.74 ms (495 iterations)
+Benchmarking mermaid_to_json/flowchart_tiny: Analyzing
+mermaid_to_json/flowchart_tiny
+                        time:   [811.64 µs 1.4201 ms 2.5002 ms]
+Benchmarking mermaid_to_json/flowchart_small
+Benchmarking mermaid_to_json/flowchart_small: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/flowchart_small: Collecting 10 samples in estimated 529.00 ms (220 iterations)
+Benchmarking mermaid_to_json/flowchart_small: Analyzing
+mermaid_to_json/flowchart_small
+                        time:   [1.3556 ms 1.4854 ms 1.6990 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking mermaid_to_json/flowchart_medium
+Benchmarking mermaid_to_json/flowchart_medium: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 877.4ms or enable flat sampling.
+Benchmarking mermaid_to_json/flowchart_medium: Collecting 10 samples in estimated 877.43 ms (55 iterations)
+Benchmarking mermaid_to_json/flowchart_medium: Analyzing
+mermaid_to_json/flowchart_medium
+                        time:   [9.7719 ms 11.025 ms 11.954 ms]
+Benchmarking mermaid_to_json/flowchart_large
+Benchmarking mermaid_to_json/flowchart_large: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/flowchart_large: Collecting 10 samples in estimated 609.56 ms (20 iterations)
+Benchmarking mermaid_to_json/flowchart_large: Analyzing
+mermaid_to_json/flowchart_large
+                        time:   [27.482 ms 34.612 ms 43.602 ms]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high severe
+Benchmarking mermaid_to_json/sequence_tiny
+Benchmarking mermaid_to_json/sequence_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/sequence_tiny: Collecting 10 samples in estimated 555.55 ms (220 iterations)
+Benchmarking mermaid_to_json/sequence_tiny: Analyzing
+mermaid_to_json/sequence_tiny
+                        time:   [1.4011 ms 1.6512 ms 1.9576 ms]
+Found 2 outliers among 10 measurements (20.00%)
+  2 (20.00%) high mild
+Benchmarking mermaid_to_json/sequence_medium
+Benchmarking mermaid_to_json/sequence_medium: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/sequence_medium: Collecting 10 samples in estimated 724.88 ms (165 iterations)
+Benchmarking mermaid_to_json/sequence_medium: Analyzing
+mermaid_to_json/sequence_medium
+                        time:   [2.8463 ms 3.2750 ms 3.9052 ms]
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high severe
+Benchmarking mermaid_to_json/class_tiny
+Benchmarking mermaid_to_json/class_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/class_tiny: Collecting 10 samples in estimated 530.25 ms (660 iterations)
+Benchmarking mermaid_to_json/class_tiny: Analyzing
+mermaid_to_json/class_tiny
+                        time:   [803.58 µs 843.82 µs 865.09 µs]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+Benchmarking mermaid_to_json/class_medium
+Benchmarking mermaid_to_json/class_medium: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/class_medium: Collecting 10 samples in estimated 648.90 ms (220 iterations)
+Benchmarking mermaid_to_json/class_medium: Analyzing
+mermaid_to_json/class_medium
+                        time:   [2.6879 ms 2.8153 ms 2.9252 ms]
+Benchmarking mermaid_to_json/state_tiny
+Benchmarking mermaid_to_json/state_tiny: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/state_tiny: Collecting 10 samples in estimated 585.05 ms (275 iterations)
+Benchmarking mermaid_to_json/state_tiny: Analyzing
+mermaid_to_json/state_tiny
+                        time:   [1.8198 ms 2.0798 ms 2.3455 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high mild
+Benchmarking mermaid_to_json/state_medium
+Benchmarking mermaid_to_json/state_medium: Warming up for 200.00 ms
+Benchmarking mermaid_to_json/state_medium: Collecting 10 samples in estimated 559.25 ms (110 iterations)
+Benchmarking mermaid_to_json/state_medium: Analyzing
+mermaid_to_json/state_medium
+                        time:   [4.8942 ms 4.9821 ms 5.1107 ms]
+
+Benchmarking mermaid_dense_graphs/dense_10n_10e
+Benchmarking mermaid_dense_graphs/dense_10n_10e: Warming up for 200.00 ms
+Benchmarking mermaid_dense_graphs/dense_10n_10e: Collecting 10 samples in estimated 764.75 ms (110 iterations)
+Benchmarking mermaid_dense_graphs/dense_10n_10e: Analyzing
+mermaid_dense_graphs/dense_10n_10e
+                        time:   [6.1190 ms 6.3008 ms 6.5356 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+Benchmarking mermaid_dense_graphs/dense_20n_30e
+Benchmarking mermaid_dense_graphs/dense_20n_30e: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 755.1ms.
+Benchmarking mermaid_dense_graphs/dense_20n_30e: Collecting 10 samples in estimated 755.13 ms (10 iterations)
+Benchmarking mermaid_dense_graphs/dense_20n_30e: Analyzing
+mermaid_dense_graphs/dense_20n_30e
+                        time:   [40.387 ms 44.714 ms 49.379 ms]
+Benchmarking mermaid_dense_graphs/dense_30n_60e
+Benchmarking mermaid_dense_graphs/dense_30n_60e: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 2.6s.
+Benchmarking mermaid_dense_graphs/dense_30n_60e: Collecting 10 samples in estimated 2.6439 s (10 iterations)
+Benchmarking mermaid_dense_graphs/dense_30n_60e: Analyzing
+mermaid_dense_graphs/dense_30n_60e
+                        time:   [256.34 ms 271.36 ms 289.91 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) high severe
+
+Benchmarking mermaid_render_svg/flowchart_tiny
+Benchmarking mermaid_render_svg/flowchart_tiny: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 532.7ms or enable flat sampling.
+Benchmarking mermaid_render_svg/flowchart_tiny: Collecting 10 samples in estimated 532.70 ms (55 iterations)
+Benchmarking mermaid_render_svg/flowchart_tiny: Analyzing
+mermaid_render_svg/flowchart_tiny
+                        time:   [8.4034 ms 8.9034 ms 9.3367 ms]
+Benchmarking mermaid_render_svg/flowchart_small
+Benchmarking mermaid_render_svg/flowchart_small: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 530.3ms or enable flat sampling.
+Benchmarking mermaid_render_svg/flowchart_small: Collecting 10 samples in estimated 530.29 ms (55 iterations)
+Benchmarking mermaid_render_svg/flowchart_small: Analyzing
+mermaid_render_svg/flowchart_small
+                        time:   [8.8987 ms 9.3879 ms 10.035 ms]
+Found 1 outliers among 10 measurements (10.00%)
+  1 (10.00%) low mild
+Benchmarking mermaid_render_svg/flowchart_medium
+Benchmarking mermaid_render_svg/flowchart_medium: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 705.2ms or enable flat sampling.
+Benchmarking mermaid_render_svg/flowchart_medium: Collecting 10 samples in estimated 705.15 ms (55 iterations)
+Benchmarking mermaid_render_svg/flowchart_medium: Analyzing
+mermaid_render_svg/flowchart_medium
+                        time:   [11.925 ms 12.421 ms 13.124 ms]
+Found 2 outliers among 10 measurements (20.00%)
+  1 (10.00%) low mild
+  1 (10.00%) high severe
+Benchmarking mermaid_render_svg/sequence_tiny
+Benchmarking mermaid_render_svg/sequence_tiny: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 530.2ms or enable flat sampling.
+Benchmarking mermaid_render_svg/sequence_tiny: Collecting 10 samples in estimated 530.17 ms (55 iterations)
+Benchmarking mermaid_render_svg/sequence_tiny: Analyzing
+mermaid_render_svg/sequence_tiny
+                        time:   [8.9234 ms 9.4595 ms 9.8952 ms]
+Benchmarking mermaid_render_svg/class_tiny
+Benchmarking mermaid_render_svg/class_tiny: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 520.3ms or enable flat sampling.
+Benchmarking mermaid_render_svg/class_tiny: Collecting 10 samples in estimated 520.26 ms (55 iterations)
+Benchmarking mermaid_render_svg/class_tiny: Analyzing
+mermaid_render_svg/class_tiny
+                        time:   [7.9783 ms 8.2844 ms 8.5105 ms]
+Found 3 outliers among 10 measurements (30.00%)
+  1 (10.00%) low mild
+  2 (20.00%) high mild
+Benchmarking mermaid_render_svg/state_tiny
+Benchmarking mermaid_render_svg/state_tiny: Warming up for 200.00 ms
+
+Warning: Unable to complete 10 samples in 500.0ms. You may wish to increase target time to 531.0ms or enable flat sampling.
+Benchmarking mermaid_render_svg/state_tiny: Collecting 10 samples in estimated 531.04 ms (55 iterations)
+Benchmarking mermaid_render_svg/state_tiny: Analyzing
+mermaid_render_svg/state_tiny
+                        time:   [9.4131 ms 10.346 ms 11.027 ms]
+
