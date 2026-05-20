@@ -1,0 +1,5 @@
+---
+source: crates/excalidraw-render/tests/snapshots.rs
+description: DefaultHasher digest + byte length for large_200_elements.excalidraw
+---
+26894da8eb172187 len=138667

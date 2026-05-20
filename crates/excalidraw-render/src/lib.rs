@@ -214,6 +214,20 @@ impl SvgNode {
         self
     }
 
+    /// Insert an attribute at the front of the attribute list if no
+    /// attribute with that name already exists. Used to decorate rendered
+    /// element roots with `id` / `data-element` without clobbering
+    /// renderer-specific bindings.
+    #[must_use]
+    pub fn ensure_attr_front(mut self, name: impl Into<String>, value: impl Into<String>) -> Self {
+        let name = name.into();
+        if self.attrs.iter().any(|(existing, _)| existing == &name) {
+            return self;
+        }
+        self.attrs.insert(0, (name, value.into()));
+        self
+    }
+
     #[must_use]
     pub fn child(mut self, child: SvgNode) -> Self {
         self.children.push(child);
@@ -467,6 +481,7 @@ pub fn render_svg(
     let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
     for normalized in &scene.elements {
         let mut rendered = render_element(normalized, scene, options, &fonts, &mut warnings);
+        decorate_element_root(&mut rendered.nodes, &normalized.element);
         if let Some((clip_id, clip_def)) = frame_clip_for_child(normalized, scene) {
             if frame_clip_defs.insert(clip_id.clone()) {
                 rendered.defs.push(clip_def);
@@ -519,6 +534,7 @@ pub fn render_png(
     let mut content = SvgNode::new("g").attr("id", "excalidraw-content");
     for normalized in &scene.elements {
         let mut rendered = render_element(normalized, scene, options, &fonts, &mut warnings);
+        decorate_element_root(&mut rendered.nodes, &normalized.element);
         if let Some((clip_id, clip_def)) = frame_clip_for_child(normalized, scene) {
             if frame_clip_defs.insert(clip_id.clone()) {
                 rendered.defs.push(clip_def);
@@ -646,8 +662,11 @@ fn frame_clip_for_child(
 ) -> Option<(String, SvgNode)> {
     let frame_id = normalized.frame_id.as_ref()?;
     let frame_index = *scene.id_map.get(frame_id)?;
+    // Excalidraw frames clip their children by default. We only treat
+    // `clip: false` as an explicit opt-out; the missing/`null` case is
+    // treated as "clip" to match the web app's behaviour.
     let frame = match &scene.elements.get(frame_index)?.element {
-        Element::Frame(frame) | Element::MagicFrame(frame) if frame.clip.unwrap_or(false) => frame,
+        Element::Frame(frame) | Element::MagicFrame(frame) if frame.clip.unwrap_or(true) => frame,
         _ => return None,
     };
     let frame_base = &frame.base;
@@ -681,6 +700,41 @@ fn nodes_only(nodes: Vec<SvgNode>) -> RenderedElement {
     }
 }
 
+/// Decorates the root SVG node of a rendered element with its source `id`
+/// (and a `data-element` tag describing the kind) so downstream consumers
+/// can correlate the SVG output back to the original `.excalidraw` JSON.
+///
+/// `id` is inserted at the front of the attribute list so it shows up
+/// first in serialised SVG, which makes diffs easier to read. Renderers
+/// that already set their own `id` / `data-*` attributes (arrows, frames,
+/// placeholders) are left untouched by [`SvgNode::ensure_attr_front`].
+fn decorate_element_root(nodes: &mut [SvgNode], element: &Element) {
+    let Some(first) = nodes.first_mut() else {
+        return;
+    };
+    let (id, kind) = match element {
+        Element::Rectangle(s) => (s.base.id.clone(), "rectangle"),
+        Element::Ellipse(s) => (s.base.id.clone(), "ellipse"),
+        Element::Diamond(s) => (s.base.id.clone(), "diamond"),
+        Element::Line(l) => (l.base.id.clone(), "line"),
+        Element::Arrow(l) => (l.base.id.clone(), "arrow"),
+        Element::Text(t) => (t.base.id.clone(), "text"),
+        Element::Freedraw(f) => (f.base.id.clone(), "freedraw"),
+        Element::Image(i) => (i.base.id.clone(), "image"),
+        Element::Frame(f) => (f.base.id.clone(), "frame"),
+        Element::MagicFrame(f) => (f.base.id.clone(), "magicframe"),
+        Element::Embeddable(u) => (u.base.id.clone(), "embeddable"),
+        Element::Iframe(u) => (u.base.id.clone(), "iframe"),
+        _ => return,
+    };
+    let mut decorated = std::mem::replace(first, SvgNode::new("g"));
+    if !id.is_empty() {
+        decorated = decorated.ensure_attr_front("id", id);
+    }
+    decorated = decorated.ensure_attr_front("data-element", kind);
+    *first = decorated;
+}
+
 fn render_element(
     normalized: &NormalizedElement,
     scene: &Scene,
@@ -707,9 +761,11 @@ fn render_element(
         Element::Text(text) if options.text_policy == TextPolicy::SvgText => {
             nodes_only(render_text(text, scene, fonts))
         }
-        Element::Freedraw(freedraw) => {
-            nodes_only(render_freedraw(freedraw, normalized.abs_points.as_deref()))
-        }
+        Element::Freedraw(freedraw) => nodes_only(render_freedraw(
+            freedraw,
+            normalized.abs_points.as_deref(),
+            options,
+        )),
         Element::Image(image) => render_image(image, scene, options, warnings),
         Element::Frame(frame) | Element::MagicFrame(frame) => nodes_only(render_frame(frame)),
         Element::Embeddable(unsupported) | Element::Iframe(unsupported) => {
@@ -1074,17 +1130,25 @@ fn text_lines(text: &str) -> Vec<String> {
 
 // --- Freedraw rendering ---
 
-fn render_freedraw(freedraw: &FreedrawElement, abs_points: Option<&[Point]>) -> Vec<SvgNode> {
+fn render_freedraw(
+    freedraw: &FreedrawElement,
+    abs_points: Option<&[Point]>,
+    options: &RenderOptions,
+) -> Vec<SvgNode> {
     let points = match abs_points.filter(|p| p.len() >= 2) {
         Some(p) => p,
         None => return Vec::new(),
     };
 
+    match options.quality {
+        RenderQuality::Clean => render_freedraw_smooth(freedraw, points),
+        RenderQuality::Full | RenderQuality::FastSvg => render_freedraw_rough(freedraw, points),
+    }
+}
+
+fn render_freedraw_smooth(freedraw: &FreedrawElement, points: &[Point]) -> Vec<SvgNode> {
     let style = RenderStyle::from_base(&freedraw.base);
     let stroke_width = freedraw.base.stroke_width.max(1.0);
-
-    // Build a simplified stroke outline from points.
-    // For v0.1 we use a polyline with round line-join and line-cap.
     let d = freedraw_path_data(points);
 
     let mut path = SvgNode::new("path")
@@ -1103,6 +1167,41 @@ fn render_freedraw(freedraw: &FreedrawElement, abs_points: Option<&[Point]>) -> 
     }
 
     vec![path]
+}
+
+/// Renders a freedraw stroke through `rough-rs`'s `curve` primitive so the
+/// result matches the sketchy aesthetic of the shape renderers. The output
+/// is one or more `<path>` elements wrapped in a `<g>` so the renderer
+/// loop's id / data-element decoration lands on a single root.
+fn render_freedraw_rough(freedraw: &FreedrawElement, points: &[Point]) -> Vec<SvgNode> {
+    let base = &freedraw.base;
+    let style = RenderStyle::from_base(base);
+    let generator = Generator::new(Config::default());
+    let rough_options = style.rough_options(base);
+    let curve_points: Vec<[f64; 2]> = points.iter().map(|p| [p.x, p.y]).collect();
+    let drawable = generator.curve(&curve_points, Some(rough_options));
+
+    let mut group = SvgNode::new("g");
+    if let Some(transform) = &style.transform {
+        group = group.attr("transform", transform);
+    }
+    if let Some(opacity) = &style.opacity {
+        group = group.attr("opacity", opacity);
+    }
+    for path in drawable_to_paths(&drawable) {
+        let mut node = SvgNode::new("path")
+            .attr("d", path.d)
+            .attr("stroke", path.stroke)
+            .attr("stroke-width", path.stroke_width.to_string())
+            .attr("fill", path.fill)
+            .attr("stroke-linecap", "round")
+            .attr("stroke-linejoin", "round");
+        if let Some(dasharray) = &style.stroke_dasharray {
+            node = node.attr("stroke-dasharray", dasharray);
+        }
+        group = group.child(node);
+    }
+    vec![group]
 }
 
 fn freedraw_path_data(points: &[Point]) -> String {

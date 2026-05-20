@@ -1144,6 +1144,7 @@ dependencies = [
  "excalidraw-core",
  "fontdb",
  "image",
+ "insta",
  "resvg",
  "rough-rs",
  "serde",
