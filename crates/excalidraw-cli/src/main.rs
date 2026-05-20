@@ -165,7 +165,15 @@ enum Commands {
         /// Input Mermaid file path (or `-` for stdin)
         input: PathBuf,
         /// Output file path (extension determines format: .svg, .png or .excalidraw)
-        output: PathBuf,
+        ///
+        /// `-o`/`--output` is the preferred form and matches `excd to-svg` /
+        /// `excd mermaid-to-excalidraw`. A trailing positional path is still
+        /// accepted for backward compatibility with v0.2-alpha scripts.
+        #[arg(short, long, value_name = "PATH")]
+        output: Option<PathBuf>,
+        /// Output file path (deprecated positional form; prefer `-o`).
+        #[arg(value_name = "OUTPUT_POSITIONAL", hide = true)]
+        output_positional: Option<PathBuf>,
         /// Render scale
         #[arg(long, default_value = "1.0")]
         scale: f64,
@@ -613,6 +621,7 @@ fn main() -> Result<()> {
         Commands::Mermaid {
             input,
             output,
+            output_positional,
             scale,
             padding,
             font_size,
@@ -623,6 +632,20 @@ fn main() -> Result<()> {
         } => {
             let raw = read_input(&input)?;
             let options = mermaid_options(font_size, &curve, &on_unsupported, 5000);
+            let output = match (output, output_positional) {
+                (Some(p), _) => p,
+                (None, Some(p)) => {
+                    eprintln!(
+                        "warning: positional output path is deprecated, use `-o {}` instead",
+                        p.display()
+                    );
+                    p
+                }
+                (None, None) => {
+                    eprintln!("error: missing output path (use `-o <file.svg|.png|.excalidraw>`)");
+                    process::exit(2);
+                }
+            };
             let ext = output
                 .extension()
                 .and_then(|e| e.to_str())

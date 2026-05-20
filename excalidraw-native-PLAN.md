@@ -2076,10 +2076,14 @@ Output:
 ### 21.11 CLI Additions
 
 ```bash
-excd mermaid-to-excalidraw <input.mmd> [output.excalidraw]
-excd mermaid <input.mmd> [output.{svg,png,excalidraw}]
-cat flow.mmd | excd mermaid - --format svg > flow.svg
+excd mermaid-to-excalidraw <input.mmd> [-o output.excalidraw]
+excd mermaid <input.mmd> -o output.{svg,png,excalidraw}
+cat flow.mmd | excd mermaid-to-excalidraw - > flow.excalidraw
 ```
+
+`excd mermaid` accepts `-o`/`--output <PATH>` and infers the output
+format from the file extension; the trailing positional path used in
+v0.2-alpha is still accepted but emits a deprecation warning.
 
 ### 21.12 v0.2 Gate
 
@@ -2094,21 +2098,23 @@ Do not begin full v0.2 conversion until a spike proves:
 
 ### 21.13 v0.2 Tests
 
-Fixtures:
+Fixtures (live under `tests/fixtures/mermaid/`; the `_simple` files from
+the original plan ship as `_basic` to match the other diagram families):
 
 ```text
-flowchart_simple.mmd
-flowchart_subgraphs.mmd
+flowchart_basic.mmd        (was: flowchart_simple.mmd)
+flowchart_subgraph.mmd     (was: flowchart_subgraphs.mmd)
 flowchart_styled.mmd
 flowchart_shapes.mmd
 flowchart_50nodes.mmd
-sequence_simple.mmd
+sequence_basic.mmd         (was: sequence_simple.mmd)
 sequence_loops.mmd
 sequence_activations.mmd
 sequence_notes.mmd
+class_basic.mmd
 class_inheritance.mmd
 class_namespaces.mmd
-state_simple.mmd
+state_basic.mmd            (was: state_simple.mmd)
 state_composite.mmd
 state_choice.mmd
 er_basic.mmd
@@ -2116,14 +2122,21 @@ er_cardinalities.mmd
 unsupported_gantt.mmd
 ```
 
-Tests:
+Tests (covered by `crates/excalidraw-mermaid/tests/integration.rs`
+and `crates/excalidraw-mermaid/tests/snapshots.rs`):
 
-- Mermaid parse
-- layout extraction
-- conversion snapshot
-- render SVG validity
-- visual regression after render
-- unsupported fallback behavior
+- Mermaid parse — every Tier 1 fixture round-trips through `parse_to_excalidraw_file`.
+- layout extraction — exercised implicitly by the conversion tests.
+- conversion snapshot — `insta::assert_json_snapshot!` on the canonical
+  `.excalidraw` JSON for each fixture (see `snapshots/excalidraw@*.snap`).
+- render SVG validity — `excalidraw_render::render_svg` is invoked on
+  every Tier 1 fixture and asserted non-empty.
+- visual regression after render — `insta::assert_snapshot!` on the
+  rendered SVG for each fixture (see `snapshots/svg@*.snap`). Snapshots
+  are byte-stable because element seeds are deterministic
+  (`STABLE_SEED = 1_337`).
+- unsupported fallback behaviour — `OnUnsupported::Placeholder` and
+  `OnUnsupported::Error` both exercised against `unsupported_gantt.mmd`.
 
 ### 21.14 v0.2 Risks
 
