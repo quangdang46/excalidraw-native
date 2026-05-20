@@ -43,9 +43,9 @@ run_bench excalidraw-cli    mcp_e2e
 DIAGRAM_SRC="$OUT_DIR/benchmarks_overview.mmd"
 if [[ -f "$DIAGRAM_SRC" ]]; then
     echo "==> regenerating overview diagram from $DIAGRAM_SRC"
-    "$EXCD_BIN" mermaid "$DIAGRAM_SRC" "$OUT_DIR/benchmarks_overview.svg"
-    "$EXCD_BIN" mermaid "$DIAGRAM_SRC" "$OUT_DIR/benchmarks_overview.png"
-    "$EXCD_BIN" mermaid "$DIAGRAM_SRC" "$OUT_DIR/benchmarks_overview.excalidraw"
+    "$EXCD_BIN" mermaid "$DIAGRAM_SRC" -o "$OUT_DIR/benchmarks_overview.svg"
+    "$EXCD_BIN" mermaid "$DIAGRAM_SRC" -o "$OUT_DIR/benchmarks_overview.png"
+    "$EXCD_BIN" mermaid "$DIAGRAM_SRC" -o "$OUT_DIR/benchmarks_overview.excalidraw"
 else
     echo "warn: $DIAGRAM_SRC missing, skipping diagram regen" >&2
 fi

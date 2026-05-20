@@ -1,0 +1,373 @@
+---
+source: crates/excalidraw-mermaid/tests/snapshots.rs
+description: Mermaid → Excalidraw JSON for flowchart_subgraph.mmd
+expression: json
+---
+{
+  "type": "excalidraw",
+  "version": 2,
+  "source": "excalidraw-mermaid:flowchart-v2",
+  "elements": [
+    {
+      "type": "frame",
+      "id": "mm-flow-cluster-cluster",
+      "x": 127.25,
+      "y": 70.0,
+      "width": 238.5,
+      "height": 124.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [],
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "name": "Cluster",
+      "clip": false,
+      "isCollapsed": false
+    },
+    {
+      "type": "rectangle",
+      "id": "mm-flow-node-A",
+      "x": 33.0,
+      "y": 43.0,
+      "width": 69.4375,
+      "height": 54.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "#e7f5ff",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [
+        {
+          "id": "mm-flow-nodetext-A",
+          "type": "text"
+        },
+        {
+          "id": "mm-flow-edge-L_A_B_0",
+          "type": "arrow"
+        }
+      ],
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "type": "text",
+      "id": "mm-flow-nodetext-A",
+      "x": 33.0,
+      "y": 43.0,
+      "width": 69.4375,
+      "height": 54.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [],
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "A",
+      "originalText": "A",
+      "fontSize": 16.0,
+      "fontFamily": 5,
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "lineHeight": 1.25,
+      "autoResize": true,
+      "containerId": "mm-flow-node-A"
+    },
+    {
+      "type": "rectangle",
+      "id": "mm-flow-node-B",
+      "x": 152.4375,
+      "y": 43.0,
+      "width": 69.0625,
+      "height": 54.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "#e7f5ff",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [
+        {
+          "id": "mm-flow-nodetext-B",
+          "type": "text"
+        },
+        {
+          "id": "mm-flow-edge-L_A_B_0",
+          "type": "arrow"
+        },
+        {
+          "id": "mm-flow-edge-L_B_C_0",
+          "type": "arrow"
+        }
+      ],
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "type": "text",
+      "id": "mm-flow-nodetext-B",
+      "x": 152.4375,
+      "y": 43.0,
+      "width": 69.0625,
+      "height": 54.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [],
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "B",
+      "originalText": "B",
+      "fontSize": 16.0,
+      "fontFamily": 5,
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "lineHeight": 1.25,
+      "autoResize": true,
+      "containerId": "mm-flow-node-B"
+    },
+    {
+      "type": "rectangle",
+      "id": "mm-flow-node-C",
+      "x": 296.5,
+      "y": 43.0,
+      "width": 114.546875,
+      "height": 54.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "#e7f5ff",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [
+        {
+          "id": "mm-flow-nodetext-C",
+          "type": "text"
+        },
+        {
+          "id": "mm-flow-edge-L_B_C_0",
+          "type": "arrow"
+        }
+      ],
+      "updated": 0,
+      "link": null,
+      "locked": false
+    },
+    {
+      "type": "text",
+      "id": "mm-flow-nodetext-C",
+      "x": 296.5,
+      "y": 43.0,
+      "width": 114.546875,
+      "height": 54.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [],
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "text": "Outside",
+      "originalText": "Outside",
+      "fontSize": 16.0,
+      "fontFamily": 5,
+      "textAlign": "center",
+      "verticalAlign": "middle",
+      "lineHeight": 1.25,
+      "autoResize": true,
+      "containerId": "mm-flow-node-C"
+    },
+    {
+      "type": "arrow",
+      "id": "mm-flow-edge-L_A_B_0",
+      "x": 102.4375,
+      "y": 70.0,
+      "width": 50.0,
+      "height": 0.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [],
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          25.0,
+          0.0
+        ],
+        [
+          50.0,
+          0.0
+        ]
+      ],
+      "startArrowhead": null,
+      "endArrowhead": "arrow",
+      "startBinding": {
+        "elementId": "mm-flow-node-A",
+        "focus": 0.0,
+        "gap": 4.0
+      },
+      "endBinding": {
+        "elementId": "mm-flow-node-B",
+        "focus": 0.0,
+        "gap": 4.0
+      },
+      "elbowed": false,
+      "lastCommittedPoint": null
+    },
+    {
+      "type": "arrow",
+      "id": "mm-flow-edge-L_B_C_0",
+      "x": 221.5,
+      "y": 70.0,
+      "width": 75.0,
+      "height": 0.0,
+      "angle": 0.0,
+      "strokeColor": "#1e1e1e",
+      "backgroundColor": "transparent",
+      "fillStyle": "solid",
+      "strokeWidth": 2.0,
+      "strokeStyle": "solid",
+      "roughness": 1.0,
+      "opacity": 100.0,
+      "seed": 1337,
+      "version": 1,
+      "versionNonce": 0,
+      "isDeleted": false,
+      "groupIds": [],
+      "frameId": null,
+      "boundElements": [],
+      "updated": 0,
+      "link": null,
+      "locked": false,
+      "points": [
+        [
+          0.0,
+          0.0
+        ],
+        [
+          25.0,
+          0.0
+        ],
+        [
+          50.0,
+          0.0
+        ],
+        [
+          75.0,
+          0.0
+        ]
+      ],
+      "startArrowhead": null,
+      "endArrowhead": "arrow",
+      "startBinding": {
+        "elementId": "mm-flow-node-B",
+        "focus": 0.0,
+        "gap": 4.0
+      },
+      "endBinding": {
+        "elementId": "mm-flow-node-C",
+        "focus": 0.0,
+        "gap": 4.0
+      },
+      "elbowed": false,
+      "lastCommittedPoint": null
+    }
+  ],
+  "appState": {
+    "viewBackgroundColor": "#ffffff",
+    "gridSize": 20,
+    "theme": "light"
+  },
+  "files": {}
+}

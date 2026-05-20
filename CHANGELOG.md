@@ -10,7 +10,20 @@ starting from `0.1.0`.
 
 ### Added
 
-- **`excalidraw-mermaid` crate (v0.2 alpha)** — new workspace crate that converts
+- **`excalidraw-mermaid 0.2.0`** — bumped from the `v0.2 alpha` line. The
+  crate now carries its own `version = "0.2.0"` (rest of the workspace
+  stays on `0.1.0`) to reflect that every Tier 1 diagram closes the
+  `excalidraw-native-PLAN.md` §21 checklist: parse, layout, conversion
+  snapshot, SVG render validity, visual regression after render, and
+  unsupported fallback are all backed by tests.
+- **Visual regression snapshots for Mermaid** — new
+  `crates/excalidraw-mermaid/tests/snapshots.rs` covers all 17 Tier 1
+  fixtures with an `insta::assert_json_snapshot!` of the canonical
+  `.excalidraw` JSON plus an `insta::assert_snapshot!` of the SVG
+  rendered by `excalidraw-render`. Snapshots are byte-stable because
+  element seeds are pinned to `STABLE_SEED = 1_337` and the renderer
+  uses deterministic rough geometry.
+- **`excalidraw-mermaid` crate (v0.2)** — workspace crate that converts
   Mermaid source text into Excalidraw scenes via `merman-core` parsing and
   `merman-render` layout. Public API: `parse_to_excalidraw`,
   `parse_to_excalidraw_file`, `parse_to_excalidraw_value`,
@@ -43,6 +56,11 @@ starting from `0.1.0`.
 
 ### Changed
 
+- **`excd mermaid` output is now `-o`/`--output`**, matching `excd to-svg`,
+  `excd to-png` and `excd mermaid-to-excalidraw`. The previous positional
+  output path still works for backward compatibility with v0.2-alpha
+  scripts but prints a deprecation warning. `--output` is required; the
+  output format is still inferred from the file extension.
 - **`rough-rs` is now a crates.io dependency (`0.1`)**. The previous local
   path dependency through `../rough-rs` is no longer required. Building
   the workspace no longer needs a sibling `rough-rs` checkout.
@@ -64,7 +82,9 @@ starting from `0.1.0`.
 The first crates.io release will pin the workspace at `0.1.0`. Planned
 publish order: `excalidraw-core` → `excalidraw-render` → `excalidraw-tui`
 → `excalidraw-mcp` → `excalidraw-cli`. The `excalidraw-mermaid` crate is
-released alongside as a `0.1.0-alpha` to reflect its Tier 1 status.
+released alongside as `0.2.0` once the workspace publish lands, since the
+`v0.2` Mermaid scope is now complete (see `excalidraw-native-PLAN.md`
+§21 and the `### Added` block above).
 
 ### Highlights (carried over from pre-0.1 development)
 

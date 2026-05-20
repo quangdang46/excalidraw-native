@@ -4,3 +4,7 @@
 # bv (beads viewer) local config and caches
 .bv/
 excd-screenshot.*
+
+# insta pending snapshots (review with `cargo insta review`)
+*.snap.new
+.insta.pending

@@ -66,7 +66,7 @@ Target v0.1 features:
 | CLI binary | `excd` |
 | Terminal preview | Planned |
 | MCP server | Planned |
-| Mermaid → Excalidraw | v0.2 (alpha — Tier 1 flowchart / sequence / class / state / ER) |
+| Mermaid → Excalidraw | v0.2 — Tier 1 flowchart / sequence / class / state / ER (snapshot-tested) |
 
 ---
 
@@ -427,7 +427,7 @@ agent reviews or attaches PNG/SVG output
 
 ---
 
-## Mermaid → Excalidraw (v0.2 alpha)
+## Mermaid → Excalidraw (v0.2)
 
 The v0.2 line adds first-class Mermaid support through the new
 [`excalidraw-mermaid`](crates/excalidraw-mermaid) crate. The full pipeline is:
@@ -464,10 +464,10 @@ Unsupported diagram types fall back to either:
 excd mermaid-to-excalidraw input.mmd -o out.excalidraw
 cat input.mmd | excd mermaid-to-excalidraw -
 
-# One-shot Mermaid → SVG / PNG / .excalidraw (format inferred from extension):
-excd mermaid input.mmd out.svg
-excd mermaid input.mmd out.png --scale 2 --padding 24
-excd mermaid input.mmd out.excalidraw --curve basis --font-size 14
+# One-shot Mermaid → SVG / PNG / .excalidraw (format inferred from -o extension):
+excd mermaid input.mmd -o out.svg
+excd mermaid input.mmd -o out.png --scale 2 --padding 24
+excd mermaid input.mmd -o out.excalidraw --curve basis --font-size 14
 ```
 
 Useful flags:

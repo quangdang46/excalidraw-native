@@ -1,6 +1,9 @@
 [package]
 name = "excalidraw-mermaid"
-version.workspace = true
+# Tracks the Mermaid → Excalidraw conversion line; bumped to 0.2.0 for the
+# first stable v0.2 release after the alpha cycle. The rest of the workspace
+# stays on `version.workspace = true` (0.1.0) until the renderer follows.
+version = "0.2.0"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -19,6 +22,7 @@ thiserror.workspace = true
 excalidraw-render = { path = "../excalidraw-render" }
 excalidraw-core = { path = "../excalidraw-core" }
 criterion.workspace = true
+insta.workspace = true
 
 [[bench]]
 name = "mermaid_bench"
