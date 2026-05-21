@@ -17,7 +17,8 @@ Verified by the integration test `svg_validity_arrows_bound`: for the `arrows_bo
 **Still open (lower priority):**
 - **Focus handling** — `ArrowBinding.focus` is parsed but not yet used to bias the connection point along the shape edge.
 - **Elbowed routing** — `elbowed: true` arrows still render as straight lines.
-- **Per-element `id` on non-arrow shapes** — only arrow groups carry `id`/binding attributes today; rectangles/ellipses still render as anonymous `<g>` wrappers (this is the remaining piece of issue #3 below).
+
+**Closed since:** Per-element `id` on non-arrow shapes is now emitted by `decorate_element_root` — rectangles/ellipses/diamonds/text/freedraw/image/frame/etc. all carry `id` and `data-element="<kind>"` on their root SVG node.
 
 ---
 
@@ -33,22 +34,25 @@ Additionally, `output_sixel()` previously only emitted a placeholder DCS header.
 
 ## 🟡 PARTIALLY ADDRESSED — SVG output structure
 
-Arrow groups now carry `id` and `data-start-binding` / `data-end-binding`. The remaining structural improvements (per-shape `id`, nested bound-text grouping, `<clipPath>` for frames) are out of scope for this fix and tracked here.
+Arrow groups now carry `id` and `data-start-binding` / `data-end-binding`. Per-shape `id` and frame `<clipPath>` are now also emitted (see below).
+
+**Closed:**
+
+1. ~~**Per-shape element IDs**~~ — Every rendered element root now carries `id="<excalidraw-id>"` and `data-element="<kind>"`. See `decorate_element_root` in `crates/excalidraw-render/src/lib.rs`.
+2. ~~**No clipPath for frames**~~ — Frames now emit a `<clipPath>` in `<defs>` and children with `frameId` are wrapped in `<g clip-path="url(#frame-clip-<id>)">`. The previous behaviour required an explicit `"clip": true` flag; the renderer now defaults to clipping (matching the Excalidraw web app) and only honours `"clip": false` as an explicit opt-out.
 
 **Still open:**
 
-1. **Per-shape element IDs** — Rectangles, ellipses, diamonds, etc. still render as anonymous `<g>` wrappers. Only arrows currently emit `id` attributes.
-2. **No clipPath for frames** — Frames use `data-frame` attribute but don't apply SVG `<clipPath>` to clip children inside the frame boundary.
 3. **No semantic grouping** — Bound text isn't nested inside its container group; arrows aren't grouped with their bound shapes.
 
 ---
 
 ## 🟡 Visual / Fidelity Issues
 
-### 4. Freedraw strokes render as smooth polylines, not rough/sketchy
+### 4. ~~Freedraw strokes render as smooth polylines, not rough/sketchy~~ — FIXED
 - **Fixture:** `tests/fixtures/freedraw.excalidraw`
-- **Cause:** `rough-rs` integration is applied to shapes but not to freedraw strokes
-- **Severity:** Medium — fidelity gap vs. Excalidraw web
+- **Resolution:** `render_freedraw` now branches on `RenderQuality`. For `Full`/`FastSvg` it routes through `rough_rs::Generator::curve` so freedraw points are emitted as a sketchy multi-pass stroke matching the Excalidraw web rendering. `Clean` quality keeps the previous smooth polyline behaviour.
+- **Severity:** ~~Medium~~ → closed
 
 ### 5. Text uses fallback fonts, not Excalifont
 - **Fixture:** `tests/fixtures/text_standalone.excalidraw`
@@ -79,10 +83,10 @@ Arrow groups now carry `id` and `data-start-binding` / `data-end-binding`. The r
 
 ## 🔵 Test Infrastructure Gaps
 
-### 9. No visual regression tests
-- Tests validate XML correctness and pixel dimensions but not visual appearance
-- Visual bugs like missing arrow bindings would not be caught
-- **Severity:** Medium
+### 9. ~~No visual regression tests~~ — FIXED (Mermaid + v0.1)
+- Mermaid: 18 `insta` snapshots in `crates/excalidraw-mermaid/tests/snapshots.rs`.
+- v0.1 renderer: 13 `insta` snapshots in `crates/excalidraw-render/tests/snapshots.rs` (12 full-SVG + 1 digest snapshot for the 200-element stress fixture).
+- **Severity:** ~~Medium~~ → closed
 
 ### 10. `view` command has zero test coverage
 - TUI viewer cannot be tested in CI/non-interactive environments

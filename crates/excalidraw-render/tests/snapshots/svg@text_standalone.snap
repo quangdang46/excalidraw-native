@@ -1,0 +1,5 @@
+---
+source: crates/excalidraw-render/tests/snapshots.rs
+description: Rendered SVG for text_standalone.excalidraw
+---
+<?xml version="1.0" encoding="UTF-8"?><svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="233" height="133" viewBox="-6.5 -6.5 233 133"><rect x="-6.5" y="-6.5" width="233" height="133" fill="#ffffff"/><g id="excalidraw-content"><text data-element="text" id="txt1" x="10" y="26" fill="#000000" font-family="Virgil, Excalifont, cursive" font-size="20" text-anchor="start" data-font-source="fallback:Virgil"><tspan x="10" y="26">Hello World</tspan></text><text data-element="text" id="txt2" x="110" y="62.8" fill="#364fc7" font-family="Cascadia Code, Courier New, monospace" font-size="16" text-anchor="middle" data-font-source="fallback:Cascadia Code"><tspan x="110" y="62.8">Line one</tspan><tspan x="110" dy="20">Line two</tspan><tspan x="110" dy="20">Line three</tspan></text></g></svg>

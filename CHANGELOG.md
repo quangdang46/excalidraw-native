@@ -10,6 +10,25 @@ starting from `0.1.0`.
 
 ### Added
 
+- **v0.1 renderer fidelity pass** — Closes the remaining `PROBLEMS.md`
+  fidelity items §3.1 / §3.2 / §4 / §9 in one go:
+  - Every rendered SVG element now carries `id="<excalidraw-id>"` and
+    `data-element="<kind>"` on its root node (rectangle, ellipse, diamond,
+    text, freedraw, image, frame, magicframe, embeddable, iframe).
+    Downstream tools can now correlate rendered SVG nodes back to the
+    source `.excalidraw` JSON without relying on draw order.
+  - Frames now emit a `<clipPath>` in `<defs>` and children with
+    `frameId` are wrapped in `<g clip-path="url(#frame-clip-<id>)">`.
+    Default behaviour matches the Excalidraw web app (clip-on); the
+    `"clip": false` flag is honoured as an explicit opt-out.
+  - Freedraw strokes are now routed through `rough_rs::Generator::curve`
+    when rendering at `Full` / `FastSvg` quality, producing the sketchy
+    multi-pass aesthetic of the Excalidraw web freedraw tool. `Clean`
+    quality still emits a single smooth polyline.
+  - 13 new `insta` snapshots in `crates/excalidraw-render/tests/snapshots.rs`
+    cover every `.excalidraw` fixture (12 full-SVG snapshots + 1 digest
+    snapshot for the 200-element stress fixture) so any unintended diff
+    in the renderer output is caught at PR time.
 - **`excalidraw-mermaid 0.2.0`** — bumped from the `v0.2 alpha` line. The
   crate now carries its own `version = "0.2.0"` (rest of the workspace
   stays on `0.1.0`) to reflect that every Tier 1 diagram closes the
